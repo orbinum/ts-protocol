@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# npm pack output — a build artefact, not source.
+*.tgz

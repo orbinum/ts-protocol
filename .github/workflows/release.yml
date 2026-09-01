@@ -176,9 +176,16 @@ jobs:
 
       # Last, and only here: a failed publish leaves a tag and a GitHub release
       # that can be retried, whereas a published version can never be replaced.
+      #
+      # The token is written into .npmrc rather than passed as NODE_AUTH_TOKEN.
+      # That variable is a convention of `actions/setup-node`, which writes
+      # `_authToken=${NODE_AUTH_TOKEN}` into .npmrc and relies on **npm**
+      # expanding it at run time. pnpm does not do that expansion — it reads the
+      # literal string and reports ENEEDAUTH, having never seen a token at all.
       - name: Publish to npm
         run: |
+          npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
           pnpm publish --no-git-checks --access public
           echo "✅ Published @orbinum/protocol@${{ needs.verify.outputs.version }} to npm"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

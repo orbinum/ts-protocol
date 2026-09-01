@@ -14,8 +14,9 @@ permissions:
   contents: write
 
 # Never cancel a release in flight: a run killed between `git push origin <tag>`
-# and the npm publish leaves a tag with no package behind it, and the next run
-# sees the tag and decides there is nothing to do.
+# and the npm publish leaves a tag with no package behind it. That state is
+# recoverable now — `verify` asks npm, not the tag — but a half-finished release
+# is still worth not creating on purpose.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -27,7 +28,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
-      should_release: ${{ steps.check_tag.outputs.tag_exists == 'false' }}
+      should_release: ${{ steps.check.outputs.published == 'false' }}
+      tag_exists: ${{ steps.check.outputs.tag_exists }}
 
     steps:
       - name: Checkout code
@@ -43,24 +45,41 @@ jobs:
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "📦 Version: $VERSION"
 
-      # package.json also changes when a script or a dependency is edited, so
-      # the path filter alone is not "the version went up". The tag is the real
-      # record of what shipped: if it exists, this push changed something else.
-      - name: Check whether this version was already released
-        id: check_tag
+      # Two separate questions, because they have separate answers.
+      #
+      # `published` decides whether this workflow does anything at all, and it
+      # asks npm — the registry is the only record of what actually shipped. The
+      # tag used to play that role, and it is not equal to it: a run that failed
+      # between pushing the tag and publishing left a tag behind, and the next
+      # run then read "already released" and refused to finish the job. Worse,
+      # tagging is not idempotent, so a re-run died on `tag already exists`
+      # instead of continuing.
+      #
+      # `tag_exists` only decides whether the tagging step runs, so a retry can
+      # skip past what already succeeded and get to the part that did not.
+      - name: Check release state
+        id: check
         run: |
           if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "⚠️  Tag ${{ steps.version.outputs.tag }} already exists — nothing to release."
+            echo "ℹ️  Tag ${{ steps.version.outputs.tag }} already exists — tagging will be skipped."
             echo "tag_exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "✅ Tag ${{ steps.version.outputs.tag }} is new."
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+          if npm view "@orbinum/protocol@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then
+            echo "⚠️  @orbinum/protocol@${{ steps.version.outputs.version }} is already on npm — nothing to release."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ @orbinum/protocol@${{ steps.version.outputs.version }} is not on npm yet."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # A release whose notes would be empty is a mistake, not a release: the
       # CHANGELOG section is the release notes.
       - name: Require a CHANGELOG entry for this version
-        if: steps.check_tag.outputs.tag_exists == 'false'
+        if: steps.check.outputs.published == 'false'
         run: |
           if ! grep -q "^## \[${{ steps.version.outputs.version }}\]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md has no '## [${{ steps.version.outputs.version }}]' section. Rename '## [Unreleased]' to '## [${{ steps.version.outputs.version }}] - $(date +%F)' before releasing."
@@ -114,7 +133,7 @@ jobs:
         run: |
           TAG=${{ needs.verify.outputs.tag }}
           mkdir -p release
-          tar -czf "release/orbinum-sdk-${TAG}.tar.gz" dist/
+          tar -czf "release/orbinum-protocol-${TAG}.tar.gz" dist/
           (cd release && sha256sum ./*.tar.gz > "checksums-${TAG}.txt")
           ls -lh release/
           cat "release/checksums-${TAG}.txt"
@@ -148,17 +167,22 @@ jobs:
             echo ""
             echo "## Release Assets"
             echo ""
-            echo "- \`orbinum-sdk-${{ needs.verify.outputs.tag }}.tar.gz\` — compiled dist (ESM + CJS + types)"
+            echo "- \`orbinum-protocol-${{ needs.verify.outputs.tag }}.tar.gz\` — compiled dist (ESM + CJS + types)"
             echo "- \`checksums-${{ needs.verify.outputs.tag }}.txt\` — SHA-256 checksums"
           } > release_notes.md
 
+      # Skipped when the tag is already there, so a retry after a failed publish
+      # gets past this instead of dying on `tag already exists`.
       - name: Create and push tag
+        if: needs.verify.outputs.tag_exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "${{ needs.verify.outputs.tag }}" -m "Release ${{ needs.verify.outputs.tag }}"
           git push origin "${{ needs.verify.outputs.tag }}"
 
+      # Idempotent by design: the action updates an existing release rather than
+      # failing, so a retry refreshes the assets and moves on to the publish.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:

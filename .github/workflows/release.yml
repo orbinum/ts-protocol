@@ -229,7 +229,18 @@ jobs:
       # literal string and reports ENEEDAUTH, having never seen a token at all.
       - name: Publish to npm
         run: |
-          npm config set //registry.npmjs.org/:_authToken "${NPM_TOKEN}"
+          # Into the PROJECT .npmrc, not the user one. `actions/setup-node`
+          # already wrote a project .npmrc containing the literal
+          # `_authToken=${NODE_AUTH_TOKEN}`, and a project file outranks
+          # `~/.npmrc` — which is where `npm config set` puts things. So setting
+          # it there changed a file nothing read, while pnpm kept reading the
+          # unexpanded placeholder next door and reported ENEEDAUTH.
+          # Appended, and the placeholder line dropped: a later entry for the
+          # same key wins, but leaving `${NODE_AUTH_TOKEN}` behind would keep an
+          # unexpanded literal in a file meant to hold a credential.
+          grep -v '_authToken' .npmrc > .npmrc.tmp 2>/dev/null || true
+          mv .npmrc.tmp .npmrc 2>/dev/null || true
+          printf '//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" >> .npmrc
           pnpm publish --no-git-checks --access public
           echo "✅ Published @orbinum/protocol@${{ needs.verify.outputs.version }} to npm"
         env:

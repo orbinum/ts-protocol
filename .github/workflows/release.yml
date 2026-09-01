@@ -36,6 +36,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Tags are NOT fetched by `fetch-depth: 0` — that only controls
+          # history depth. Without this the tag check below sees no tags at all,
+          # reports the version as unreleased, and the tagging step then dies on
+          # `tag already exists` against a tag it could not see.
+          fetch-tags: true
 
       - name: Extract version from package.json
         id: version
@@ -108,6 +113,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Tags are NOT fetched by `fetch-depth: 0` — that only controls
+          # history depth. Without this the tag check below sees no tags at all,
+          # reports the version as unreleased, and the tagging step then dies on
+          # `tag already exists` against a tag it could not see.
+          fetch-tags: true
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -171,15 +181,26 @@ jobs:
             echo "- \`checksums-${{ needs.verify.outputs.tag }}.txt\` — SHA-256 checksums"
           } > release_notes.md
 
-      # Skipped when the tag is already there, so a retry after a failed publish
-      # gets past this instead of dying on `tag already exists`.
+      # Tags the commit only if the tag is not already there, so a retry after a
+      # failed publish gets past this instead of dying on `tag already exists`.
+      #
+      # The `if:` above is the fast path; the check below is what makes the step
+      # correct. They are not redundant: `tag_exists` is computed in another job,
+      # on another checkout, and the first attempt at this got it wrong because
+      # `actions/checkout` does not fetch tags unless asked. Deciding again here,
+      # against the repository, cannot be fooled by how this clone was made.
       - name: Create and push tag
         if: needs.verify.outputs.tag_exists == 'false'
         run: |
+          TAG="${{ needs.verify.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "ℹ️  Tag $TAG is already on the remote — leaving it as is."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ needs.verify.outputs.tag }}" -m "Release ${{ needs.verify.outputs.tag }}"
-          git push origin "${{ needs.verify.outputs.tag }}"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
 
       # Idempotent by design: the action updates an existing release rather than
       # failing, so a retry refreshes the assets and moves on to the publish.

@@ -43,7 +43,8 @@ export * from './chain/pallet/shielded-pool/index';
 export * from './chain/pallet/zk-verifier/index';
 export * from './chain/pallet/relayer/index';
 export { toTxResult, feePaidFrom, signAndSubmitTx } from './chain/tx';
-export type { UnsafeTxOptions } from './chain/tx';
+export type { UnsafeTx, UnsafeTxOptions, SubmitOptions } from './chain/tx';
+export type { TxFinalizedPayload } from 'polkadot-api';
 
 // Surviving a connection that died between submit and finalization. Generic
 // Substrate recovery: the on-chain predicate is the caller's.

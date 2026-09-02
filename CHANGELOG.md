@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
+### Added
+
+- **`UnsafeTx` is now exported**, along with `SubmitOptions` and a re-export of
+  PAPI's `TxFinalizedPayload`. A consumer building transactions off the dynamic
+  (unsafe) api can type them from here instead of re-declaring the shape.
+  A private copy of that interface rots silently when polkadot-api renames a
+  method: the app had one, and it is how the `signAndSubmit` → `createAndSubmit`
+  mismatch below reached a wallet.
+
+### Fixed
+
+- Pinned `UnsafeTx` against PAPI's real `Transaction` at the type level
+  (`tests/chain/unsafeTx.types.test.ts`), so a polkadot-api rename fails the
+  typecheck instead of surfacing as `tx.<method> is not a function` when a user
+  signs. `UnsafeTx` is hand-written — the unsafe api has no chain descriptors to
+  instantiate PAPI's generic from — and `callUnsafeTx` reaches it through a cast,
+  so nothing in the source compared the two. Each method is asserted separately,
+  so a failure names the one that drifted.
+
+- Corrected a `signAndSubmitTx` docstring still referring to
+  `signSubmitAndWatch`, which polkadot-api 3 renamed to `createSubmitAndWatch`.
+
 ## [0.1.0] - 2026-09-01
 
 First release. The public Orbinum protocol package: everything a consumer needs to read the

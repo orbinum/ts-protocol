@@ -97,6 +97,11 @@ export function feePaidFrom(payload: TxFinalizedPayload): string | null {
  * it. The method names track polkadot-api 3, where signing moved behind a
  * `TxCreator` — `signAndSubmit(signer)` became `createAndSubmit(creator)`, and
  * the creator, not the transaction, now owns the key.
+ *
+ * Being hand-written, it can drift from PAPI without anything here noticing:
+ * `callUnsafeTx` casts, so a renamed method fails at signing time rather than
+ * at build time. `tests/chain/unsafeTx.types.test.ts` pins it against PAPI's
+ * real `Transaction` so that drift breaks the typecheck instead.
  */
 export interface UnsafeTx {
     createAndSubmit(
@@ -122,7 +127,7 @@ export function callUnsafeTx(txEntry: unknown, ...args: unknown[]): UnsafeTx {
 /**
  * Signs and submits, resolving on finalization.
  *
- * With `onBroadcast` the tx goes through `signSubmitAndWatch`, whose event
+ * With `onBroadcast` the tx goes through `createSubmitAndWatch`, whose event
  * stream is the only place the mempool acknowledgement is visible; without it
  * the plain promise path is kept, byte-for-byte the behaviour every existing
  * caller had.

@@ -222,14 +222,15 @@ jobs:
       # Last, and only here: a failed publish leaves a tag and a GitHub release
       # that can be retried, whereas a published version can never be replaced.
       #
-      # `NODE_AUTH_TOKEN` is the whole mechanism: `actions/setup-node` writes an
-      # .npmrc under RUNNER_TEMP holding `_authToken=${NODE_AUTH_TOKEN}` and
-      # exports NPM_CONFIG_USERCONFIG to point at it, so the variable is read at
-      # publish time. Writing the token anywhere else — `npm config set`, or the
-      # project .npmrc — edits a file that is not the one in use.
+      # `actions/setup-node` writes an .npmrc under RUNNER_TEMP holding
+      # `_authToken=${NODE_AUTH_TOKEN}` and points NPM_CONFIG_USERCONFIG at it,
+      # so the variable below is read at publish time. Nothing else needs
+      # setting up — writing the token elsewhere edits a file not in use.
       #
-      # This is the shape every other publishing repo here uses, and it needs
-      # setup-node@v4: the pin is load-bearing, not incidental.
+      # If this fails with ENEEDAUTH, check that the NPM_TOKEN secret exists in
+      # THIS repository before suspecting the mechanism: secrets do not follow a
+      # repo rename or a fresh remote, and an unset secret expands to an empty
+      # string rather than erroring.
       - name: Publish to npm
         run: |
           pnpm publish --no-git-checks --access public

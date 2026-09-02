@@ -125,7 +125,7 @@ jobs:
           run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: pnpm
@@ -222,26 +222,17 @@ jobs:
       # Last, and only here: a failed publish leaves a tag and a GitHub release
       # that can be retried, whereas a published version can never be replaced.
       #
-      # The token is written into .npmrc rather than passed as NODE_AUTH_TOKEN.
-      # That variable is a convention of `actions/setup-node`, which writes
-      # `_authToken=${NODE_AUTH_TOKEN}` into .npmrc and relies on **npm**
-      # expanding it at run time. pnpm does not do that expansion — it reads the
-      # literal string and reports ENEEDAUTH, having never seen a token at all.
+      # `NODE_AUTH_TOKEN` is the whole mechanism: `actions/setup-node` writes an
+      # .npmrc under RUNNER_TEMP holding `_authToken=${NODE_AUTH_TOKEN}` and
+      # exports NPM_CONFIG_USERCONFIG to point at it, so the variable is read at
+      # publish time. Writing the token anywhere else — `npm config set`, or the
+      # project .npmrc — edits a file that is not the one in use.
+      #
+      # This is the shape every other publishing repo here uses, and it needs
+      # setup-node@v4: the pin is load-bearing, not incidental.
       - name: Publish to npm
         run: |
-          # Into the PROJECT .npmrc, not the user one. `actions/setup-node`
-          # already wrote a project .npmrc containing the literal
-          # `_authToken=${NODE_AUTH_TOKEN}`, and a project file outranks
-          # `~/.npmrc` — which is where `npm config set` puts things. So setting
-          # it there changed a file nothing read, while pnpm kept reading the
-          # unexpanded placeholder next door and reported ENEEDAUTH.
-          # Appended, and the placeholder line dropped: a later entry for the
-          # same key wins, but leaving `${NODE_AUTH_TOKEN}` behind would keep an
-          # unexpanded literal in a file meant to hold a credential.
-          grep -v '_authToken' .npmrc > .npmrc.tmp 2>/dev/null || true
-          mv .npmrc.tmp .npmrc 2>/dev/null || true
-          printf '//registry.npmjs.org/:_authToken=%s\n' "${NPM_TOKEN}" >> .npmrc
           pnpm publish --no-git-checks --access public
           echo "✅ Published @orbinum/protocol@${{ needs.verify.outputs.version }} to npm"
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

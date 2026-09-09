@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-08
+
+### Added
+
+- **ISMP types and a typed `ismp_*` client**, for the Hyperbridge cross-chain
+  integration. `client.ismp` exposes request lookup by commitment, the height
+  each counterparty channel has proven, and the ISMP event stream for a block
+  range. Read-only: dispatching a message is an extrinsic, and a root-only one
+  on this chain.
+
+  Two shapes are modelled that a consumer would otherwise get wrong, both
+  verified against a running node rather than inferred:
+
+  - **A request comes back wrapped in its variant** — `[{ Post: { … } }]`, not
+    flattened. Reading `result[0].source` yields `undefined`, so `IsmpRequest`
+    is a union that forces narrowing first.
+  - **A chain is named differently by each transport.** The `ismp_*` RPCs
+    serialise a state machine as a string (`"KUSAMA-1000"`), while decoded block
+    events give the SCALE enum (`{ type: 'Kusama', value: 1000 }`). Both are
+    typed; assuming one silently reads `undefined` from the other.
+
+  Event types cover all seven `ismpMessaging` variants and the seven `ismp`
+  variants worth modelling — including the `commitment` that runtime spec 12
+  added to `MessageReceived`, `MessageRejected`, `RequestTimedOut` and
+  `GetResponseReceived`. Before that field existed an arrival could not be
+  attributed to any message and an expiry could not be matched to what expired.
+
+  `latestHeight` and `challengePeriod` return `null` rather than throwing when a
+  channel is unknown: the RPC answers with an error code for absent state, which
+  at the JSON-RPC layer is indistinguishable from a transport failure, and
+  "not onboarded yet" is a normal state during setup.
+
 ## [0.2.0] - 2026-09-02
 
 ### Added

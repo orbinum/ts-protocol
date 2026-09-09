@@ -6,6 +6,7 @@ import { ChainModule } from '../rpc/ChainModule';
 import { PrivacyModule } from '../rpc/PrivacyModule';
 import { ZkVerifierModule } from '../pallet/zk-verifier/ZkVerifierModule';
 import { RelayerStatusModule } from '../pallet/relayer/RelayerStatusModule';
+import { IsmpModule } from '../pallet/ismp/IsmpModule';
 import { ShieldedPoolPrecompile } from '../evm/precompiles/ShieldedPoolPrecompile';
 import { CryptoPrecompiles } from '../evm/precompiles/CryptoPrecompiles';
 import type { OrbinumClientConfig } from './types';
@@ -78,6 +79,12 @@ export class OrbinumClient {
     /** Typed access to `relayer_*` RPC endpoints (registry lookup and pending fee queries). */
     readonly relayerStatus: RelayerStatusModule;
     /**
+     * Typed access to `ismp_*` RPC endpoints — cross-chain requests and the height each
+     * counterparty channel has proven. Read-only: dispatching is an extrinsic, and a
+     * root-only one on this chain.
+     */
+    readonly ismp: IsmpModule;
+    /**
      * The shielded pool reached from an EVM wallet instead of a Substrate one.
      *
      * `null` when `evmRpc` was not configured — the whole group, so a caller
@@ -100,6 +107,7 @@ export class OrbinumClient {
         this.chain = new ChainModule(substrate);
         this.zkVerifier = new ZkVerifierModule(substrate);
         this.relayerStatus = new RelayerStatusModule(substrate);
+        this.ismp = new IsmpModule(substrate);
         this.precompiles = evm
             ? {
                   shieldedPool: new ShieldedPoolPrecompile(evm),

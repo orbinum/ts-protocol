@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-10
+
+### Added
+
+- **The commitment of a request can be rebuilt off-chain** (`requestCommitment`,
+  `encodePostRequest`, `encodeGetRequest`). This is what lets a caller join an
+  event to the request it describes, and what a relayer must do to prove one.
+
+  A commitment is `keccak256(abi.encode(request))` — **Solidity ABI, not
+  SCALE**. `Request::encode()` is an inherent method that SHADOWS the SCALE
+  `Encode` trait (`ismp-2606.1.0/src/router.rs:263`), so Rust reads as if it
+  were SCALE while emitting 32-byte-word ABI output. Off-chain the difference
+  is silent: a SCALE encoding hashes fine and yields a value the chain has
+  never seen, surfacing much later as `UnknownRequest`.
+
+  Two details a caller would otherwise get wrong, both verified against the
+  pallet's own output rather than inferred:
+
+  - **`source` and `dest` are the DISPLAY strings** — `"SUBSTRATE-orbi"`,
+    `"KUSAMA-4009"` (`abi.rs:64-76`). Not SCALE variants. `ismp_queryRequests`
+    returns exactly these, so its output is hashable as-is; converting to
+    `{ type: 'Kusama', value: 4009 }` first breaks the hash.
+  - **The GET field order is not the Rust struct's**: `source, dest, nonce,
+    from, timeoutTimestamp, keys, height, context`.
+
+  Pinned by tests against two vectors the runtime itself printed, plus the
+  first real cross-chain read this chain performed. If an upstream bump changes
+  the wire format they fail loudly instead of producing unmatchable hashes.
+
+- **Reading Hyperbridge's ISMP child trie** (`childTrieProof`,
+  `ISMP_CHILD_TRIE`, `commitmentKey`, `receiptKey`). For the coprocessor,
+  `ismp-grandpa` records `state_root = child_trie_root`
+  (`consensus.rs:142-150`) — verified live: a stored commitment equals
+  Hyperbridge's `ismp.childTrieRoot` at that height, not its header's state
+  root. So a GET against Hyperbridge can only prove keys inside that trie, and
+  one for a global key such as `Ismp::Nonce` is unverifiable by construction.
+
+  `childTrieProof` uses `ismp_queryChildTrieProof`, the RPC Tesseract itself
+  uses. Two encoding traps are handled and documented: keys travel as arrays of
+  bytes, not hex; and `proof` is a `Vec<u8>` containing a SCALE `Vec<Vec<u8>>`
+  — decoding it per element yields one bogus node per byte.
+
+  `receiptKey`'s absence is **not** proof of transit: the handler stores the
+  receipt before the module callback and deletes it if the callback errs
+  (`handlers/request.rs:112-125`), so a refused message and one in flight look
+  identical from outside.
+
+### Changed
+
+- **Event types now match runtime spec 13**, which added twenty fields the SDK
+  did not know about. `RequestDispatched` gains `nonce`, `timeoutTimestamp`,
+  `bodyLen` and `kind`; `MessageReceived` and `MessageRejected` gain the
+  sender's nonce and deadline (plus `bodyLen` on the rejection);
+  `GetResponseReceived` gains `dest`, `height`, `nonce` and `timeoutTimestamp`;
+  `RequestTimedOut` gains `kind`, `nonce`, `timeoutTimestamp` and `bodyLen`.
+  Consumers on 0.3.0 compile today and read `undefined` from fields the chain
+  is in fact emitting.
+
+  New `RequestKind` (`'Post' | 'Get'`), carried by `RequestDispatched` and
+  `RequestTimedOut`. The distinction is load-bearing: a POST is handed to a
+  module on the destination and may be refused, a GET addresses storage and has
+  no receiving module at all.
+
+  `timeoutTimestamp` has **three** states and conflating any two is a bug: `0n`
+  means never expires (upstream's explicit branch, **not** 1970), absent means
+  the block predates spec 13, anything else is a real deadline.
+
+  `GetResponseReceived.height` is the only genuine remote block number this
+  pallet emits — an inbound POST carries no origin height, because its proof is
+  verified against Hyperbridge's state rather than the origin's.
+
+  On a GET, `RequestDispatched.to` is **our own** module id: the address the
+  answer routes back to, not a recipient.
+
+- **`relayer` on `PostRequestHandled` / `GetRequestHandled` is not necessarily
+  an account.** The host takes whatever the submitter signed with, verbatim up
+  to 32 bytes (`pallet-ismp/src/host.rs:351`). A relaying script can leave an
+  ASCII tag there, so decide what it is before rendering it as an address.
+
+- **Who answers a GET, on a Substrate chain.** The public relayer does not:
+  Tesseract resolves GETs on Hyperbridge and delivers the response only to EVM
+  sources (`tesseract/messaging/messaging/src/events.rs:314-336`, "Substrate
+  sinks can't verify the mmr proof"). A `dispatch_get` from a Substrate chain
+  goes unanswered unless something of yours carries the proof back. The chain
+  verifies it either way — a relayer supplies bytes, not trust.
+
+### Breaking
+
+- `PostRequest.nonce`, `PostRequest.timeoutTimestamp`, `GetRequest.nonce`,
+  `GetRequest.height` and `GetRequest.timeoutTimestamp` are now `bigint`. The
+  chain declares them u64 and `number` silently loses precision past 2^53. The
+  RPC hands them over as JSON numbers, so widen them (`BigInt(raw.nonce)`)
+  before hashing — otherwise the commitment will not reproduce.
+
 ## [0.3.0] - 2026-09-08
 
 ### Added

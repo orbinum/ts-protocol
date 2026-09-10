@@ -1,4 +1,5 @@
-export { IsmpModule } from './IsmpModule';
+export { IsmpModule, ISMP_CHILD_TRIE, commitmentKey, receiptKey } from './IsmpModule';
+export { encodeGetRequest, encodePostRequest, requestCommitment } from './commitment';
 export type {
     StateMachineQuery,
     PostRequest,
@@ -9,6 +10,8 @@ export type {
 export type {
     StateMachineId,
     StateMachineEnum,
+    RequestKind,
+    TimeoutTimestamp,
     RequestDispatchedEvent,
     IsmpRequestEvent,
     RequestTimedOutEvent,

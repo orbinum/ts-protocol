@@ -46,22 +46,71 @@ export type StateMachineEnum =
     | { type: 'Tendermint'; value: string }
     | { type: 'Relay'; value: { relay: string; para_id: number } };
 
+// ─── Shared field semantics ──────────────────────────────────────────────────
+
+/**
+ * Which kind of request an event describes.
+ *
+ * Carried by `RequestDispatched` (what went out) and `RequestTimedOut` (what expired),
+ * both since runtime spec 13. The distinction is not cosmetic: a POST is handed to a
+ * module on the destination, which may refuse it, while a GET addresses storage and has
+ * no receiving module at all — so the two fail, and succeed, in different ways.
+ */
+export type RequestKind = 'Post' | 'Get';
+
+/**
+ * Absolute unix SECONDS at which a message expires, with **three** distinct states.
+ * Conflating any two of them is a bug:
+ *
+ *   - `0n`         never expires. Upstream's explicit `if timeout == 0 { 0 }` branch
+ *                  (`ismp-2606.1.0/src/dispatcher.rs:132`) — NOT "expired in 1970".
+ *                  Rendering it as a date claims the message died decades ago.
+ *   - `undefined`  unknown: the block predates runtime spec 13, which is when the
+ *                  pallet started emitting it. Absence is a real answer here.
+ *   - anything else  a genuine deadline.
+ */
+export type TimeoutTimestamp = bigint;
+
 // ─── Outbound: dispatched from this chain ────────────────────────────────────
 
 /**
- * Emitted by `dispatch_post()` when a request is accepted by the ISMP dispatcher.
- * Rust variant: `RequestDispatched { dest, to, commitment }`
+ * Emitted by `dispatch_post()` or `dispatch_get()` when a request is accepted by the ISMP
+ * dispatcher.
+ * Rust variant: `RequestDispatched { dest, to, commitment, nonce, timeout_timestamp,
+ * body_len, kind }`
  *
  * `dest` is the chain the message is ADDRESSED to, not the next hop — Hyperbridge is the
  * route, and the pallet consults the coprocessor on its own.
+ *
+ * Everything past `commitment` arrived in runtime spec 13. Together they make the event
+ * self-sufficient: the request it describes can be rebuilt from these fields alone and
+ * hashed back to `commitment` (see `requestCommitment` in `./commitment`), which is what
+ * a relayer has to do to prove it.
  */
 export type RequestDispatchedEvent = {
     /** Final recipient chain, not the coprocessor. */
     dest: StateMachineId;
-    /** Destination module id — 8, 20 or 32 bytes, 0x-prefixed. The length is the type. */
+    /**
+     * Module id — 8, 20 or 32 bytes, 0x-prefixed. The length is the type.
+     *
+     * Whose module depends on `kind`, and getting this backwards names the wrong chain:
+     * on a POST it is the DESTINATION's receiving module; on a GET there is no recipient,
+     * so it carries OUR own module id — the address the answer is routed back to.
+     */
     to: string;
     /** 0x-prefixed 32-byte commitment. How the request is looked up over RPC. */
     commitment: string;
+    /**
+     * The nonce this message went out with — read BEFORE the dispatcher consumed it, so
+     * it names this request and not the next one. Matches the `ismp.Request` event from
+     * the same call.
+     */
+    nonce: bigint;
+    /** See `TimeoutTimestamp`: `0n` means never, not 1970. */
+    timeoutTimestamp: TimeoutTimestamp;
+    /** Payload size. Always `0` for a GET, which has no body. */
+    bodyLen: number;
+    kind: RequestKind;
 };
 
 /**
@@ -89,6 +138,15 @@ export type IsmpRequestEvent = {
 export type RequestTimedOutEvent = {
     dest: StateMachineId;
     commitment: string;
+    /**
+     * Which kind expired, added in spec 13. Two different failures: a POST never reached
+     * the destination, a GET's answer never came back.
+     */
+    kind: RequestKind;
+    nonce: bigint;
+    timeoutTimestamp: TimeoutTimestamp;
+    /** `0` for a GET. */
+    bodyLen: number;
 };
 
 // ─── Inbound: arrived here ───────────────────────────────────────────────────
@@ -112,6 +170,10 @@ export type MessageReceivedEvent = {
     bodyLen: number;
     /** The sender's own commitment, which joins this arrival to their `Request`. */
     commitment: string;
+    /** The SENDER's nonce, on their chain — not a counter of ours. Added in spec 13. */
+    nonce: bigint;
+    /** The deadline the sender set. See `TimeoutTimestamp`. */
+    timeoutTimestamp: TimeoutTimestamp;
 };
 
 /** Why an inbound message was not acted on. */
@@ -128,19 +190,44 @@ export type MessageRejectedEvent = {
     source: StateMachineId;
     reason: RejectReason;
     commitment: string;
+    /** Size of what was refused — with `reason: 'TooLarge'`, this is why. */
+    bodyLen: number;
+    nonce: bigint;
+    timeoutTimestamp: TimeoutTimestamp;
 };
 
 /**
  * Emitted when a response to one of our GET requests arrived.
- * Rust variant: `GetResponseReceived { keys, found, commitment }`
+ * Rust variant: `GetResponseReceived { keys, found, commitment, dest, height, nonce,
+ * timeout_timestamp }`
  *
  * `keys - found` were proven ABSENT, which is a valid answer rather than a failure. The
  * commitment is the GET's, not the response's — that is what links it to the dispatch.
+ *
+ * **Who delivers this is worth knowing.** The public relayer does not, for a Substrate
+ * chain: Tesseract resolves GETs on Hyperbridge and hands the response only to EVM
+ * sources (`tesseract/messaging/messaging/src/events.rs:314-336`, "Substrate sinks can't
+ * verify the mmr proof"). So on a chain like Orbinum this event fires because something
+ * of ours carried the proof back. The chain verifies it either way — the relayer supplies
+ * bytes, not trust.
  */
 export type GetResponseReceivedEvent = {
     keys: number;
     found: number;
     commitment: string;
+    /** The chain that was read. Added in spec 13. */
+    dest: StateMachineId;
+    /**
+     * The block height on the REMOTE chain that the read was proven against.
+     *
+     * The only genuine remote block number this pallet ever emits: an inbound POST
+     * carries no origin height at all, because its proof is verified against
+     * Hyperbridge's state rather than the origin's, so the origin's height never travels
+     * on the wire.
+     */
+    height: bigint;
+    nonce: bigint;
+    timeoutTimestamp: TimeoutTimestamp;
 };
 
 // ─── Inbound allowlist ───────────────────────────────────────────────────────
@@ -208,7 +295,14 @@ export type StateCommitmentVetoedEvent = {
  */
 export type RequestHandledEvent = {
     commitment: string;
-    /** Who delivered it, 0x-prefixed — the account a relayer fee would be owed to. */
+    /**
+     * Who submitted it, 0x-prefixed — and **not necessarily an account**.
+     *
+     * The host takes whatever the submitter signed with, verbatim up to 32 bytes
+     * (`pallet-ismp/src/host.rs:351`). A public relayer signs with a key; a relaying
+     * script can put an ASCII tag here. Rendering an arbitrary 18 bytes as an address is
+     * a lie in monospace, so decide what it is before displaying it.
+     */
     relayer: string;
 };
 

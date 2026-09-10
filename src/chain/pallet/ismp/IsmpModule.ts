@@ -14,33 +14,56 @@ export interface StateMachineQuery {
     consensusStateId: string;
 }
 
-/** A dispatched POST request, as `ismp_queryRequests` returns it. */
+/**
+ * A dispatched POST request, as `ismp_queryRequests` returns it.
+ *
+ * The u64 fields are `bigint`: the chain declares them u64, and `number` silently loses
+ * precision past 2^53. The RPC hands them over as JSON numbers today, so a caller reading
+ * raw JSON must widen them — `BigInt(raw.nonce)` — before hashing, or the commitment will
+ * not reproduce.
+ */
 export interface PostRequest {
     source: StateMachineId;
     dest: StateMachineId;
-    nonce: number;
+    nonce: bigint;
     /** Originating module id, 0x-prefixed. */
     from: string;
     /** Destination module id, 0x-prefixed. */
     to: string;
-    /** Absolute unix seconds, or 0 for "never expires". */
-    timeoutTimestamp: number;
+    /** Absolute unix seconds, or `0n` for "never expires" — see `TimeoutTimestamp`. */
+    timeoutTimestamp: bigint;
     /** Opaque payload, 0x-prefixed. */
     body: string;
 }
 
-/** A dispatched GET request. */
+/** A dispatched GET request. Same `bigint` reasoning as `PostRequest`. */
 export interface GetRequest {
     source: StateMachineId;
     dest: StateMachineId;
-    nonce: number;
+    nonce: bigint;
+    /**
+     * Our own module id, 0x-prefixed — a GET addresses storage, not a module, so this is
+     * where the answer is routed back to rather than a recipient.
+     */
     from: string;
-    /** Storage keys being read, 0x-prefixed. */
+    /**
+     * Storage keys being read, 0x-prefixed.
+     *
+     * Against Hyperbridge these must be keys of its ISMP **child trie**, not its global
+     * state — see `HYPERBRIDGE_CHILD_TRIE`.
+     */
     keys: string[];
-    /** The height on `dest` to read at. */
-    height: number;
+    /**
+     * The height on `dest` to read at.
+     *
+     * Must be a height the source chain can already prove: the response handler compares
+     * it for EQUALITY, not as a lower bound, so a height nobody holds a commitment for is
+     * not a slow request — it is one that can never be answered.
+     */
+    height: bigint;
+    /** Application metadata, echoed back on the response. Usually `'0x'`. */
     context: string;
-    timeoutTimestamp: number;
+    timeoutTimestamp: bigint;
 }
 
 /**
@@ -61,6 +84,40 @@ export interface ChannelHeight {
     stateId: StateMachineId;
     consensusStateId: string;
     latestHeight: bigint;
+}
+
+/**
+ * The ISMP child trie prefix, identical on every `pallet-ismp` chain.
+ *
+ * **What of Hyperbridge is readable: this trie, not its global state.** For the
+ * coprocessor, `ismp-grandpa` records `state_root = ismp_digest.child_trie_root` and
+ * `overlay_root = mmr_root` (`ismp-grandpa-2606.0.0/src/consensus.rs:142-150`, "for the
+ * coprocessor, we only care about the child root & mmr root") — verified live: a stored
+ * commitment equals Hyperbridge's `ismp.childTrieRoot` at that height, not its header's
+ * `state_root`.
+ *
+ * So a GET against Hyperbridge can only prove keys inside this trie, and a GET for a
+ * global key such as `Ismp::Nonce` is unverifiable by construction: the proof would be
+ * for a trie the source chain holds no root of. This holds for any relayer, not only a
+ * self-relaying one.
+ */
+export const ISMP_CHILD_TRIE = `0x${Buffer.from(':child_storage:default:ISMPv2').toString('hex')}`;
+
+/** Child-trie key of a request commitment: `"RequestCommitments" ++ commitment`. */
+export function commitmentKey(commitment: string): string {
+    return `0x${Buffer.from('RequestCommitments').toString('hex')}${commitment.slice(2)}`;
+}
+
+/**
+ * Child-trie key of a delivery receipt: `"RequestReceipts" ++ commitment`.
+ *
+ * Present means the destination accepted the request. **Absent does not mean in
+ * transit**: the handler stores the receipt BEFORE the module callback and deletes it if
+ * the callback errs (`modules/ismp/core/src/handlers/request.rs:112-125`), so a refused
+ * message and one still in flight look identical from outside.
+ */
+export function receiptKey(commitment: string): string {
+    return `0x${Buffer.from('RequestReceipts').toString('hex')}${commitment.slice(2)}`;
 }
 
 /**
@@ -148,6 +205,40 @@ export class IsmpModule {
      */
     async events(from: number, to: number): Promise<Record<string, unknown[]>> {
         return this.substrate.request<Record<string, unknown[]>>('ismp_queryEvents', [from, to]);
+    }
+
+    /**
+     * Trie nodes proving `keys` in the ISMP child trie at `height`.
+     *
+     * This is the RPC Tesseract itself uses for state proofs
+     * (`tesseract/messaging/substrate/src/provider.rs:314-325`); public nodes generally do
+     * not expose `childstate_getChildReadProof`.
+     *
+     * Two encoding details, both of which cost real debugging time:
+     *
+     *   - the keys go over the wire as **arrays of bytes**, not hex strings — a hex string
+     *     is rejected with "invalid type: string, expected struct";
+     *   - the response's `proof` is a `Vec<u8>` (a JSON array of numbers) that CONTAINS a
+     *     SCALE-encoded `Vec<Vec<u8>>`. Handing that array straight to a `Vec<Bytes>`
+     *     decoder yields one bogus "node" per byte — a 1462-node proof that hashes to
+     *     nothing. The raw bytes are returned here; decode them with SCALE, not per-element.
+     *
+     * Returns `null` when the node has no state at that height (pruned, or not synced that
+     * far), which is a normal answer rather than a failure.
+     */
+    async childTrieProof(height: number, keys: string[]): Promise<Uint8Array | null> {
+        const asBytes = keys.map((k) => Array.from(Buffer.from(k.slice(2), 'hex')));
+        try {
+            const res = await this.substrate.request<{ proof: number[] | string }>(
+                'ismp_queryChildTrieProof',
+                [height, asBytes]
+            );
+            return typeof res.proof === 'string'
+                ? Uint8Array.from(Buffer.from(res.proof.slice(2), 'hex'))
+                : Uint8Array.from(res.proof);
+        } catch {
+            return null;
+        }
     }
 
     /**

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0]
+
+### Added
+
+- **`DeliveryConfirmedEvent`**, and a matching arm on `IsmpMessagingEvent` — runtime
+  spec 14's `ismpMessaging.DeliveryConfirmed { commitment, relayer, height }`.
+
+  This is the chain's own witness to an outbound POST landing, which it previously had
+  none of: `PostRequestHandled` fires on the destination, so from local state a delivered
+  message and one still in flight were the same thing. The protocol offers no reply path —
+  upstream #840 removed `PostResponse` — so the runtime proves delivery by reading the
+  destination's `RequestReceipts` entry over a GET and verifying a state proof.
+
+  `commitment` names the POST being confirmed, not the GET that proved it; those are
+  different messages. `relayer` carries the same caveat as `RequestHandledEvent.relayer` —
+  opaque bytes, not necessarily an account. `height` is the remote height the receipt was
+  proven at.
+
+  Note what it does not claim: the receipt read is the **coprocessor's**, so this proves
+  Hyperbridge accepted and forwarded the message. Execution on the final chain is one hop
+  further and is not witnessed here.
+
+### Changed
+
+- `IsmpMessagingEvent` now has eight arms, not seven. A consumer matching exhaustively over
+  it will need the new case — which is the intended loud failure.
+
 ## [0.4.0] - 2026-09-10
 
 ### Added

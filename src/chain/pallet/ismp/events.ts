@@ -324,9 +324,40 @@ export type TimeoutHandledEvent = {
 // ─── Discriminated unions ────────────────────────────────────────────────────
 
 /**
+ * Emitted when a message this chain dispatched is proven delivered.
+ * Rust variant: `DeliveryConfirmed { commitment, relayer, height }`
+ *
+ * Added in runtime spec 14, and it is this chain's only witness to its own outbound POST
+ * landing: `PostRequestHandled` fires on the DESTINATION, so before this a delivered
+ * message and one still in flight were indistinguishable from local state. The protocol
+ * offers no reply path — upstream #840 removed `PostResponse` — so the proof is a GET
+ * that reads the destination's `RequestReceipts` entry and verifies it against a state
+ * proof.
+ *
+ * What it does and does not say: the receipt read is the COPROCESSOR's, so this proves
+ * Hyperbridge accepted and forwarded the message. Execution on the final chain is one hop
+ * further and is not witnessed here.
+ */
+export type DeliveryConfirmedEvent = {
+    /**
+     * The POST being confirmed — not the commitment of the GET that proved it, which is a
+     * different message entirely. This is the value that joins the confirmation to the
+     * `RequestDispatched` it closes out.
+     */
+    commitment: string;
+    /**
+     * Who the destination recorded as the deliverer, 0x-prefixed. Same caveat as
+     * {@link RequestHandledEvent.relayer}: opaque bytes, **not necessarily an account**.
+     */
+    relayer: string;
+    /** The REMOTE height the receipt was proven at. */
+    height: bigint;
+};
+
+/**
  * The `ismpMessaging` events this SDK models, as a discriminated union.
  *
- * All seven variants the pallet emits are here.
+ * All eight variants the pallet emits are here.
  */
 export type IsmpMessagingEvent =
     | { type: 'RequestDispatched'; data: RequestDispatchedEvent }
@@ -335,7 +366,8 @@ export type IsmpMessagingEvent =
     | { type: 'GetResponseReceived'; data: GetResponseReceivedEvent }
     | { type: 'RequestTimedOut'; data: RequestTimedOutEvent }
     | { type: 'SourceAccepted'; data: SourceChangedEvent }
-    | { type: 'SourceRemoved'; data: SourceChangedEvent };
+    | { type: 'SourceRemoved'; data: SourceChangedEvent }
+    | { type: 'DeliveryConfirmed'; data: DeliveryConfirmedEvent };
 
 /**
  * The `ismp` protocol-pallet events this SDK models.

@@ -9,6 +9,7 @@ import type {
     MessageReceivedEvent,
     MessageRejectedEvent,
     GetResponseReceivedEvent,
+    DeliveryConfirmedEvent,
     RequestTimedOutEvent,
     IsmpRequestEvent,
     StateMachineEnum,
@@ -69,6 +70,22 @@ describe('ismp RPC types', () => {
 // ─── Event shapes ────────────────────────────────────────────────────────────
 
 describe('ismp event types', () => {
+    it('models DeliveryConfirmed, and it is in the union', () => {
+        // Added in runtime spec 14. The commitment is the POST being confirmed, not the
+        // GET that proved it — those are different messages, and reporting the GET's would
+        // make the event impossible to join to anything.
+        const confirmed: DeliveryConfirmedEvent = {
+            commitment: '0x' + '49'.repeat(32),
+            relayer: '0x' + 'aa'.repeat(32),
+            height: 10_459_918n,
+        };
+
+        const asEvent: IsmpMessagingEvent = { type: 'DeliveryConfirmed', data: confirmed };
+        expect(asEvent.type).toBe('DeliveryConfirmed');
+        // `height` is a u64 and so a bigint, like every other height in this file.
+        expect(typeof confirmed.height).toBe('bigint');
+    });
+
     it('carries a commitment on every message event', () => {
         const commitment = '0x' + '49'.repeat(32);
 

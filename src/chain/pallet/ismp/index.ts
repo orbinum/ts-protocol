@@ -19,6 +19,7 @@ export type {
     RejectReason,
     MessageRejectedEvent,
     GetResponseReceivedEvent,
+    DeliveryConfirmedEvent,
     SourceChangedEvent,
     StateMachineUpdatedEvent,
     StateCommitmentVetoedEvent,

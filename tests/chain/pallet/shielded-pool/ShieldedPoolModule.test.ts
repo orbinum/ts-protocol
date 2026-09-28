@@ -441,3 +441,37 @@ describe('ShieldedPoolModule.privateTransfer – fee & assetId args', () => {
         expect(result.blockNumber).toBe(42);
     });
 });
+
+// ─── claimRelayFees ───────────────────────────────────────────────────────────
+
+describe('ShieldedPoolModule.claimRelayFees', () => {
+    it('signs claim_relay_fees with the asset and amount', async () => {
+        const client = txClient('claim_relay_fees');
+        const result = await new ShieldedPoolModule(client).claimRelayFees(
+            { assetId: 3, amount: 500n },
+            mockSigner
+        );
+        expect(client._txEntry).toHaveBeenCalledWith({ asset_id: 3, amount: 500n });
+        expect(client._signAndSubmit).toHaveBeenCalledWith(mockSigner);
+        expect(result.ok).toBe(true);
+    });
+
+    it('refuses bad parameters before building the tx', async () => {
+        const client = txClient('claim_relay_fees');
+        const mod = new ShieldedPoolModule(client);
+        await expect(mod.claimRelayFees({ assetId: 0, amount: 0n }, mockSigner)).rejects.toThrow(
+            'claimRelayFees.amount'
+        );
+        await expect(
+            mod.claimRelayFees({ assetId: 2 ** 32, amount: 1n }, mockSigner)
+        ).rejects.toThrow('claimRelayFees.assetId');
+        expect(client._txEntry).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a dispatch failure as ok: false', async () => {
+        const result = await new ShieldedPoolModule(
+            txClient('claim_relay_fees', FINALIZED_ERR)
+        ).claimRelayFees({ assetId: 0, amount: 1n }, mockSigner);
+        expect(result.ok).toBe(false);
+    });
+});

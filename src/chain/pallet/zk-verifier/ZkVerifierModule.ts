@@ -10,10 +10,8 @@ function mapCircuitVersionInfo(raw: RawZkVerifierCircuitVersionInfo): ZkVerifier
     return {
         circuitId: raw.circuit_id,
         activeVersion: raw.active_version,
-        proofSystem: 'Groth16',
         supportedVersions: raw.supported_versions ?? [],
         vkHashes: (raw.vk_hashes ?? []).map(mapVkHash),
-        historicalVersions: [],
     };
 }
 

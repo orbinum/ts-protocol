@@ -82,6 +82,3 @@ export async function txLandedAfterError(
 export function recoveredTxResult(txHash = ''): TxResult {
     return { txHash, blockHash: '', blockNumber: 0, ok: true };
 }
-
-/** @deprecated Prefer `recoveredTxResult(txHash)` — this drops the hash. */
-export const RECOVERED_TX_RESULT: TxResult = recoveredTxResult();

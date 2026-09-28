@@ -123,25 +123,14 @@ export type ShieldBatchParams = {
 };
 
 /**
- * Parameters for shieldedPool.claimShieldedFees —
- * claims accrued relay fees into the shielded pool.
- *
- * The relayer must supply a ZK value proof that binds the commitment to the
- * exact amount and asset_id, preventing fee inflation attacks.
+ * Parameters for shieldedPool.claimRelayFees — pays the caller's pending relay
+ * fees out of the pool, publicly. A signed claimant is paid at the account of
+ * its registered EVM address (or itself if unregistered); an EVM caller at the
+ * account of its own address.
  */
-export type ClaimShieldedFeesParams = {
-    /** 0x-prefixed 32-byte commitment hex (Poseidon of value, assetId, ownerPk, blinding) */
-    commitment: string;
-    /** Amount to claim in planck (must match the circuit's public input) */
-    amount: bigint;
-    /** Asset ID being claimed */
+export type ClaimRelayFeesParams = {
+    /** Asset the fees accrued in. */
     assetId: number;
-    /** 128-byte Groth16 proof bytes */
-    proof: Uint8Array;
-    /** 76-byte public signals buffer (commitment || amount_u64_le || assetId_u32_le || owner_hash) */
-    publicSignals: Uint8Array;
-    /** Encrypted memo bytes (180 bytes). Required — notes without valid memos are irrecoverable. */
-    encryptedMemo: Uint8Array;
-    /** Circuit version of the fee-claim note. Verified against that version's VK. */
-    circuitVersion: number;
+    /** Amount to claim, in planck; at most the claimant's pending fees. */
+    amount: bigint;
 };

@@ -9,6 +9,9 @@
  */
 export { MemoFormat, ENCRYPTED_MEMO_SIZE, bytesToBjjScalar } from './memoFormat';
 
+// The public input that binds memos to a v2 transfer / unshield proof.
+export { memoHash } from './memoHash';
+
 // Payment slip: the sealed handoff a sender gives a recipient to skip scanning.
 export {
     sealPaymentSlip,

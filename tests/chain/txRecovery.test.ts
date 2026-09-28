@@ -7,11 +7,7 @@
  * behaviour matters more than most.
  */
 import { describe, it, expect, vi } from 'vitest';
-import {
-    txLandedAfterError,
-    isConnectionLossError,
-    RECOVERED_TX_RESULT,
-} from '../../src/chain/txRecovery';
+import { txLandedAfterError, isConnectionLossError } from '../../src/chain/txRecovery';
 
 const instant = { intervalMs: 0, sleep: async () => {} };
 
@@ -93,18 +89,5 @@ describe('txLandedAfterError', () => {
         // One sleep BEFORE each probe — the tx needs time to land before the
         // first look, or the poll burns an attempt on a guaranteed miss.
         expect(sleeps).toEqual([5_000, 5_000]);
-    });
-});
-
-describe('RECOVERED_TX_RESULT', () => {
-    it('reports success with deliberately empty block details', () => {
-        // The connection that knew the block died with the block info; a caller
-        // needing it must look the tx up, not trust these fields.
-        expect(RECOVERED_TX_RESULT).toEqual({
-            txHash: '',
-            blockHash: '',
-            blockNumber: 0,
-            ok: true,
-        });
     });
 });

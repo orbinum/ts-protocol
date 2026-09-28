@@ -398,61 +398,36 @@ describe('decodePrecompileCalldata — hostile array offsets', () => {
     });
 });
 
-/**
- * `claimShieldedFees` fue el hueco: el decodificador la parseaba entera pero
- * `methodOf` no la mapeaba, así que salía con `method: null` y los `args`
- * poblados. Un consumidor que clasifique por `method` trataba una reclamación
- * de comisiones como llamada desconocida teniendo todos los datos delante.
- */
-describe('decodePrecompileCalldata — claimShieldedFees', () => {
-    it('la nombra en vez de devolver method: null', async () => {
-        const sp = new ShieldedPoolPrecompile(mockEvm());
+describe('decodePrecompileCalldata — relayer calls', () => {
+    it('names and decodes claimRelayFees', async () => {
         let data = '';
-        await sp.claimShieldedFees(
-            {
-                commitment: COMMITMENT,
-                amount: 5_000n,
-                assetId: 0,
-                proof: PROOF,
-                publicSignals: new Uint8Array(76),
-                encryptedMemo: new Uint8Array(180),
-                circuitVersion: 1,
-            },
+        await new ShieldedPoolPrecompile(mockEvm()).claimRelayFees(
+            { assetId: 0, amount: 5_000n },
             async (tx) => {
                 data = tx.data;
                 return '0xhash';
             }
         );
-
         const decoded = decodePrecompileCalldata(SP_ADDR, data);
-
-        expect(decoded?.method).toBe('claimShieldedFees');
+        expect(decoded?.method).toBe('claimRelayFees');
+        expect(decoded?.args['assetId']).toBe(0n);
+        expect(decoded?.args['amount']).toBe(5_000n);
     });
 
-    it('y decodifica sus argumentos', async () => {
-        // El contraste que da sentido al anterior: si los args no salieran,
-        // `method: null` sería la respuesta honesta.
-        const sp = new ShieldedPoolPrecompile(mockEvm());
-        let data = '';
-        await sp.claimShieldedFees(
-            {
-                commitment: COMMITMENT,
-                amount: 5_000n,
-                assetId: 0,
-                proof: PROOF,
-                publicSignals: new Uint8Array(76),
-                encryptedMemo: new Uint8Array(180),
-                circuitVersion: 1,
-            },
-            async (tx) => {
-                data = tx.data;
-                return '0xhash';
-            }
-        );
-
+    it('names and decodes commitRelay', () => {
+        const commits = ['0x' + '11'.repeat(32), '0x' + '22'.repeat(32)];
+        const word = (n: number) => n.toString(16).padStart(64, '0');
+        const data = '0xc9b235ff' + word(32) + word(2) + commits.map((c) => c.slice(2)).join('');
         const decoded = decodePrecompileCalldata(SP_ADDR, data);
+        expect(decoded?.method).toBe('commitRelay');
+        expect(decoded?.args['count']).toBe(2);
+        expect(decoded?.args['commits']).toEqual(commits);
+    });
 
-        expect(decoded?.args['commitment']).toBe(COMMITMENT);
-        expect(decoded?.args['amount']).toBe(5_000n);
+    // claimShieldedFees (0x88d9deba) was removed in runtime spec 16 and never
+    // called on-chain, so it is not a known selector any more.
+    it('does not recognise the removed claimShieldedFees selector', () => {
+        const data = '0x88d9deba' + '00'.repeat(32 * 7);
+        expect(decodePrecompileCalldata(SP_ADDR, data)).toBeNull();
     });
 });

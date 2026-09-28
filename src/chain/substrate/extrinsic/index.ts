@@ -90,8 +90,8 @@ export function mapExtrinsicArgs(
         const m_norm = m.replace(/_/g, '');
         if (m_norm.startsWith('transfer')) {
             return {
-                recipient: get(0, 'dest') || get(0, 'destination') || get(0, 'recipient'),
-                amount: get(1, 'value') || get(1, 'amount'),
+                recipient: get(0, 'dest'),
+                amount: get(1, 'value'),
             };
         }
         if (m_norm === 'forcetransfer') {
@@ -179,7 +179,7 @@ export function mapExtrinsicArgs(
             };
         }
         if (m_norm === 'shieldbatch') {
-            const ops = get(0, 'operations') || get(0, 'arg0');
+            const ops = get(0, 'operations');
             if (Array.isArray(ops)) {
                 return {
                     operations: ops.map((op) => {
@@ -197,13 +197,16 @@ export function mapExtrinsicArgs(
             }
             return { operations: ops };
         }
-        if (m_norm === 'privatetransfer' || m_norm === 'transfer') {
+        if (m_norm === 'privatetransfer') {
             return {
                 proof: get(0, 'proof'),
                 merkle_root: get(1, 'merkle_root'),
                 nullifiers: get(2, 'nullifiers'),
                 commitments: get(3, 'commitments'),
                 encrypted_memos: get(4, 'encrypted_memos'),
+                asset_id: get(5, 'asset_id'),
+                fee: get(6, 'fee'),
+                circuit_version: get(7, 'circuit_version'),
             };
         }
         if (m_norm === 'unshield') {
@@ -214,7 +217,17 @@ export function mapExtrinsicArgs(
                 asset_id: get(3, 'asset_id'),
                 amount: get(4, 'amount'),
                 recipient: get(5, 'recipient'),
+                fee: get(6, 'fee'),
+                change_commitment: get(7, 'change_commitment'),
+                change_encrypted_memo: get(8, 'change_encrypted_memo'),
+                circuit_version: get(9, 'circuit_version'),
             };
+        }
+        if (m_norm === 'commitrelay') {
+            return { commits: get(0, 'commits') };
+        }
+        if (m_norm === 'claimrelayfees') {
+            return { asset_id: get(0, 'asset_id'), amount: get(1, 'amount') };
         }
         if (m_norm === 'registerasset') {
             return {
@@ -315,11 +328,18 @@ export function mapExtrinsicArgs(
                 version: get(1, 'version'),
             };
         }
-        if (m_norm === 'removeverificationkey') {
+        if (
+            m_norm === 'removeverificationkey' ||
+            m_norm === 'retireversion' ||
+            m_norm === 'unretireversion'
+        ) {
             return {
                 circuit_id: get(0, 'circuit_id'),
                 version: get(1, 'version'),
             };
+        }
+        if (m_norm === 'purgecircuit') {
+            return { circuit_id: get(0, 'circuit_id') };
         }
         if (m_norm === 'verifyproof') {
             return {
@@ -362,60 +382,71 @@ export function mapZkEventData(
         return formatBalance(String(val));
     };
 
-    if (m === 'shielded' || m === 'deposit') {
+    const m_norm = m.replace(/_/g, '');
+
+    // ── shielded-pool events ─────────────────────────────────────────────────
+
+    if (m_norm === 'shielded') {
         return {
-            sender: get(0, 'depositor') || get(0, 'sender'),
+            sender: get(0, 'depositor'),
             amount: formatAmount(get(1, 'amount')),
             commitment: get(2, 'commitment'),
-            memo: get(3, 'encrypted_memo') || get(3, 'memo'),
-            index: get(4, 'leaf_index') || get(4, 'index'),
+            memo: get(3, 'encrypted_memo'),
+            index: get(4, 'leaf_index'),
         };
     }
 
     // A private transfer emits TWO events, never one: the pallet splits
     // `NullifiersSpent` from `CommitmentsInserted` on purpose, so an observer
-    // cannot pair inputs with outputs. `privatetransfer` is kept only because a
-    // node that batches them under the call name would otherwise go unnamed.
-    if (m === 'nullifiersspent') {
+    // cannot pair inputs with outputs.
+    if (m_norm === 'nullifiersspent') {
         return { nullifiers: get(0, 'nullifiers') };
     }
 
-    if (m === 'commitmentsinserted') {
+    if (m_norm === 'commitmentsinserted') {
         return {
             commitments: get(0, 'commitments'),
-            memos: get(1, 'encrypted_memos') || get(1, 'memos'),
-            indices: get(2, 'leaf_indices') || get(2, 'indices'),
+            memos: get(1, 'encrypted_memos'),
+            indices: get(2, 'leaf_indices'),
         };
     }
 
-    if (m === 'privatetransfer') {
-        return {
-            nullifiers: get(0, 'nullifiers'),
-            commitments: get(1, 'commitments'),
-            memos: get(2, 'encrypted_memos') || get(2, 'memos'),
-            indices: get(3, 'leaf_indices') || get(3, 'indices'),
-        };
-    }
-
-    if (m === 'unshielded' || m === 'withdraw') {
+    if (m_norm === 'unshielded') {
         return {
             nullifier: get(0, 'nullifier'),
             amount: formatAmount(get(1, 'amount')),
             recipient: get(2, 'recipient'),
+            change_commitment: get(3, 'change_commitment'),
+            change_memo: get(4, 'change_encrypted_memo'),
+            change_index: get(5, 'change_leaf_index'),
         };
     }
 
-    if (m === 'merklerootupdated' || m === 'merkleroot') {
+    if (m_norm === 'merklerootupdated') {
         return {
             old_root: get(0, 'old_root'),
             new_root: get(1, 'new_root'),
-            size: get(2, 'tree_size') || get(2, 'size'),
+            size: get(2, 'tree_size'),
         };
     }
 
-    // ── shielded-pool — remaining events ────────────────────────────────────
+    if (m_norm === 'treesealed') {
+        return {
+            tree_id: get(0, 'tree_id'),
+            final_root: get(1, 'final_root'),
+            first_leaf_index: get(2, 'first_leaf_index'),
+            leaf_count: get(3, 'leaf_count'),
+        };
+    }
 
-    const m_norm = m.replace(/_/g, '');
+    if (m_norm === 'relayfeesclaimed') {
+        return {
+            who: get(0, 'who'),
+            to: get(1, 'to'),
+            asset_id: get(2, 'asset_id'),
+            amount: formatAmount(get(3, 'amount')),
+        };
+    }
 
     if (m_norm === 'assetregistered') {
         return { asset_id: get(0, 'asset_id') };
@@ -435,6 +466,8 @@ export function mapZkEventData(
         m_norm === 'verificationkeyregistered' ||
         m_norm === 'activeversionset' ||
         m_norm === 'verificationkeyremoved' ||
+        m_norm === 'versionretired' ||
+        m_norm === 'versionunretired' ||
         m_norm === 'proofverified' ||
         m_norm === 'proofverificationfailed'
     ) {
@@ -442,6 +475,14 @@ export function mapZkEventData(
             circuit_id: get(0, 'circuit_id'),
             version: get(1, 'version'),
         };
+    }
+
+    if (m_norm === 'circuitpurged') {
+        return { circuit_id: get(0, 'circuit_id'), removed: get(1, 'removed') };
+    }
+
+    if (m_norm === 'batchverificationkeysregistered') {
+        return { count: get(0, 'count') };
     }
 
     // ── evm events ───────────────────────────────────────────────────────────
@@ -544,6 +585,7 @@ export function mapZkEventData(
         m_norm === 'reserved' ||
         m_norm === 'unreserved' ||
         m_norm === 'deposit' ||
+        m_norm === 'withdraw' ||
         m_norm === 'slashed' ||
         m_norm === 'minted' ||
         m_norm === 'burned' ||

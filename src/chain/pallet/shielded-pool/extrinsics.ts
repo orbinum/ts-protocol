@@ -162,6 +162,26 @@ export type UnverifyAssetArgs = {
     assetId: number;
 };
 
+/**
+ * Call index 18 — `commit_relay` (Signed origin, or a registered EVM relayer)
+ * Records relay commits: a spend submitted in a later block credits its fee to
+ * the relayer that committed to it, whoever submits it.
+ */
+export type CommitRelayArgs = {
+    /** `relay_commit_hash(op_hash, relayer H160)` per spend, 32 bytes each. */
+    commits: Bytes32[];
+};
+
+/**
+ * Call index 19 — `claim_relay_fees` (Signed origin)
+ * Pays the caller's pending relay fees out of the pool, publicly: to the
+ * account of its registered relay address, else to the caller.
+ */
+export type ClaimRelayFeesArgs = {
+    assetId: number;
+    amount: bigint;
+};
+
 // ─── Discriminated call union ─────────────────────────────────────────────────
 
 /** All pallet-shielded-pool calls as a discriminated union. */
@@ -172,4 +192,6 @@ export type ShieldedPoolCall =
     | { type: 'unshield'; args: UnshieldArgs }
     | { type: 'registerAsset'; args: RegisterAssetArgs }
     | { type: 'verifyAsset'; args: VerifyAssetArgs }
-    | { type: 'unverifyAsset'; args: UnverifyAssetArgs };
+    | { type: 'unverifyAsset'; args: UnverifyAssetArgs }
+    | { type: 'commitRelay'; args: CommitRelayArgs }
+    | { type: 'claimRelayFees'; args: ClaimRelayFeesArgs };

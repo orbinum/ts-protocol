@@ -15,8 +15,9 @@ import type {
     UnshieldParams,
     PrivateTransferParams,
     ShieldBatchParams,
-    ClaimShieldedFeesParams,
+    ClaimRelayFeesParams,
 } from './extrinsicParams';
+import { assertClaimRelayFeesParams } from './validation';
 
 // ─── ShieldedPoolModule ───────────────────────────────────────────────────────
 
@@ -171,28 +172,20 @@ export class ShieldedPoolModule {
     }
 
     /**
-     * Claims accrued relay fees into the shielded pool.
-     * This is a SIGNED transaction — the relayer must sign it with their wallet.
-     * Before calling this, generate a ZK value proof with generateFeeClaimProof() (not yet implemented).
+     * Claims the signer's pending relay fees, publicly. A registered relayer is
+     * paid at the account of its EVM address; an unregistered signer at its own
+     * account. Bounded by the signer's pending balance — no proof, no note.
      *
-     * Extrinsic: shieldedPool.claim_shielded_fees(commitment, amount, asset_id, memo, proof, public_signals, circuit_version)
+     * Extrinsic: shieldedPool.claim_relay_fees(asset_id, amount).
      */
-    async claimShieldedFees(
-        params: ClaimShieldedFeesParams,
+    async claimRelayFees(
+        params: ClaimRelayFeesParams,
         signer: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
-        MemoFormat.validate(params.encryptedMemo, 'claimShieldedFees.encryptedMemo');
-        const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'claim_shielded_fees');
-        const tx = callUnsafeTx(entry, {
-            commitment: params.commitment,
-            amount: params.amount,
-            asset_id: params.assetId,
-            encrypted_memo: params.encryptedMemo,
-            proof: params.proof,
-            public_signals: params.publicSignals,
-            circuit_version: params.circuitVersion,
-        });
+        assertClaimRelayFeesParams(params, 'claimRelayFees');
+        const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'claim_relay_fees');
+        const tx = callUnsafeTx(entry, { asset_id: params.assetId, amount: params.amount });
         return signAndSubmitTx(tx, signer, options);
     }
 }

@@ -11,6 +11,8 @@ import {
     palletErrorKind,
     classifyChainError,
     KNOWN_PALLET_ERRORS,
+    extractPoolRejection,
+    poolRejectionKind,
 } from '../../../../src/chain/pallet/shielded-pool/errors';
 
 describe('extractPalletError', () => {
@@ -184,5 +186,58 @@ describe('el mapa sigue al pallet', () => {
         expect(palletErrorKind('InsufficientPendingFees')).toBe('amount');
         expect(palletErrorKind('AssetIdAlreadyExists')).toBe('asset');
         expect(palletErrorKind('FeeRecipientUnavailable')).toBe('shape');
+    });
+});
+
+// ─── pool admission (unsigned spends) ────────────────────────────────────────
+
+describe('pool rejection codes', () => {
+    it('reads the code from either rendering', () => {
+        expect(extractPoolRejection('1010: Invalid Transaction: Custom error: 12')).toBe(12);
+        expect(extractPoolRejection('Invalid(Custom(13))')).toBe(13);
+        expect(extractPoolRejection('something else')).toBeNull();
+    });
+
+    it('maps every code the pallet defines', () => {
+        const kinds: Record<number, string> = {
+            1: 'stale-proof',
+            2: 'shape',
+            3: 'amount',
+            4: 'amount',
+            10: 'proof',
+            11: 'shape',
+            12: 'proof',
+            13: 'shape',
+        };
+        for (const [code, kind] of Object.entries(kinds)) {
+            expect(poolRejectionKind(`Invalid Transaction: Custom error: ${code}`)).toBe(kind);
+        }
+        expect(poolRejectionKind('Invalid Transaction: Custom error: 99')).toBe('unknown');
+    });
+
+    it('treats Stale as already spent and Payment as a fee problem', () => {
+        expect(poolRejectionKind('1010: Invalid Transaction: Transaction is outdated')).toBe(
+            'already-spent'
+        );
+        expect(poolRejectionKind('1010: Invalid Transaction: Inability to pay some fees')).toBe(
+            'amount'
+        );
+    });
+
+    it('classifyChainError falls back to them after pallet names', () => {
+        expect(classifyChainError('1010: Invalid Transaction: Custom error: 1')).toBe(
+            'stale-proof'
+        );
+        expect(classifyChainError('message: Some("NullifierAlreadyUsed") Custom error: 12')).toBe(
+            'already-spent'
+        );
+    });
+});
+
+describe('relayer call errors', () => {
+    it('are classified', () => {
+        expect(palletErrorKind('RelayerNotRegistered')).toBe('shape');
+        expect(palletErrorKind('TooManyCommits')).toBe('capacity');
+        expect(palletErrorKind('InsufficientPendingFees')).toBe('amount');
     });
 });

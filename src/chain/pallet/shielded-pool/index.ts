@@ -5,6 +5,8 @@ export {
     isGhostNoteError,
     classifyChainError,
     palletErrorKind,
+    extractPoolRejection,
+    poolRejectionKind,
     KNOWN_PALLET_ERRORS,
 } from './errors';
 export type { PalletErrorKind } from './errors';
@@ -23,7 +25,7 @@ export type {
     PrivateTransferParams,
     ShieldBatchItem,
     ShieldBatchParams,
-    ClaimShieldedFeesParams,
+    ClaimRelayFeesParams,
 } from './extrinsicParams';
 export type {
     ShieldedEvent,
@@ -34,6 +36,7 @@ export type {
     AssetRegisteredEvent,
     AssetVerifiedEvent,
     AssetUnverifiedEvent,
+    RelayFeesClaimedEvent,
     ShieldedPoolEvent,
 } from './events';
 export type {
@@ -48,5 +51,7 @@ export type {
     RegisterAssetArgs,
     VerifyAssetArgs,
     UnverifyAssetArgs,
+    CommitRelayArgs,
+    ClaimRelayFeesArgs,
     ShieldedPoolCall,
 } from './extrinsics';

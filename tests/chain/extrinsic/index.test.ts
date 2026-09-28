@@ -147,15 +147,42 @@ describe('mapExtrinsicArgs — shieldedPool', () => {
         expect(result['commitments']).toEqual(['0xcommit']);
     });
 
-    it('maps unshield with positional keys', () => {
+    it('maps private_transfer asset, fee and circuit version', () => {
+        const result = mapExtrinsicArgs(
+            'shieldedPool',
+            'private_transfer',
+            positional('0xp', '0xr', [], [], [], 0, '10', 2)
+        );
+        expect(result).toMatchObject({ asset_id: 0, fee: '10', circuit_version: 2 });
+    });
+
+    it('maps unshield with positional keys, fee and circuit version included', () => {
         const result = mapExtrinsicArgs(
             'shieldedPool',
             'unshield',
-            positional('0xproof', '0xroot', '0xnull', 0, '999', '0xrec')
+            positional('0xproof', '0xroot', '0xnull', 0, '999', '0xrec', '10', '0xchg', '0x', 2)
         );
-        expect(result['nullifier']).toBe('0xnull');
-        expect(result['amount']).toBe('999');
-        expect(result['recipient']).toBe('0xrec');
+        expect(result).toEqual({
+            proof: '0xproof',
+            merkle_root: '0xroot',
+            nullifier: '0xnull',
+            asset_id: 0,
+            amount: '999',
+            recipient: '0xrec',
+            fee: '10',
+            change_commitment: '0xchg',
+            change_encrypted_memo: '0x',
+            circuit_version: 2,
+        });
+    });
+
+    it('maps the relayer calls', () => {
+        expect(mapExtrinsicArgs('shieldedPool', 'commit_relay', positional(['0xc']))).toEqual({
+            commits: ['0xc'],
+        });
+        expect(mapExtrinsicArgs('shieldedPool', 'claim_relay_fees', positional(0, '4000'))).toEqual(
+            { asset_id: 0, amount: '4000' }
+        );
     });
 
     it('maps shieldBatch with array operations', () => {
@@ -222,6 +249,18 @@ describe('mapExtrinsicArgs — zkVerifier', () => {
         expect(mapped[1]!['set_active']).toBe(false);
     });
 
+    it('maps the version lifecycle calls', () => {
+        for (const method of ['retire_version', 'unretire_version']) {
+            expect(mapExtrinsicArgs('zkVerifier', method, positional(1, 1))).toEqual({
+                circuit_id: 1,
+                version: 1,
+            });
+        }
+        expect(mapExtrinsicArgs('zkVerifier', 'purge_circuit', positional(6))).toEqual({
+            circuit_id: 6,
+        });
+    });
+
     it('maps verifyProof (positional)', () => {
         const result = mapExtrinsicArgs(
             'zkVerifier',
@@ -263,35 +302,50 @@ describe('mapZkEventData — shielded', () => {
         expect(result['index']).toBe(5);
     });
 
-    it('maps deposit as alias for shielded', () => {
-        const result = mapZkEventData('deposit', positional('0xSender', '500', '0xcommit'));
-        expect(result['sender']).toBe('0xSender');
-        expect(result['amount']).toMatch(/\d/); // formatted
-        expect(result['commitment']).toBe('0xcommit');
+    // Keyed by method name only, so a shielded-pool alias named like a balances
+    // event would swallow it: `Deposit` / `Withdraw` are balances events.
+    it('leaves balances Deposit and Withdraw to the balances mapping', () => {
+        for (const method of ['deposit', 'withdraw']) {
+            expect(mapZkEventData(method, positional('0xWho', '500'))).toEqual({
+                who: '0xWho',
+                amount: '500',
+            });
+        }
     });
 
-    it('maps privateTransfer event', () => {
+    it('maps commitmentsInserted event', () => {
         const result = mapZkEventData(
-            'privateTransfer',
-            named({
-                nullifiers: ['0xn1'],
-                commitments: ['0xc1'],
-                encrypted_memos: ['0xm1'],
-                leaf_indices: [0],
-            })
+            'commitmentsInserted',
+            named({ commitments: ['0xc1'], encrypted_memos: ['0xm1'], leaf_indices: [0] })
         );
-        expect(result['nullifiers']).toEqual(['0xn1']);
-        expect(result['memos']).toEqual(['0xm1']);
-        expect(result['indices']).toEqual([0]);
+        expect(result).toEqual({ commitments: ['0xc1'], memos: ['0xm1'], indices: [0] });
     });
 
-    it('maps unshielded event (positional keys)', () => {
+    it('maps unshielded event with its change note (positional keys)', () => {
         const result = mapZkEventData(
             'unshielded',
-            positional('0xnull', '2000000000000000000', '0xrecip')
+            positional('0xnull', '2000000000000000000', '0xrecip', '0xchange', '0xmemo', 7)
         );
         expect(result['nullifier']).toBe('0xnull');
         expect(result['recipient']).toBe('0xrecip');
+        expect(result['change_commitment']).toBe('0xchange');
+        expect(result['change_memo']).toBe('0xmemo');
+        expect(result['change_index']).toBe(7);
+    });
+
+    it('maps treeSealed and relayFeesClaimed events', () => {
+        expect(mapZkEventData('treeSealed', positional(3, '0xroot', 0, 1048576))).toEqual({
+            tree_id: 3,
+            final_root: '0xroot',
+            first_leaf_index: 0,
+            leaf_count: 1048576,
+        });
+        const claimed = mapZkEventData(
+            'relayFeesClaimed',
+            named({ who: '0xA', to: '0xB', asset_id: 0, amount: '4000' })
+        );
+        expect(claimed).toMatchObject({ who: '0xA', to: '0xB', asset_id: 0 });
+        expect(claimed['amount']).toMatch(/\d/); // formatted
     });
 
     it('maps merkleRootUpdated event (positional keys)', () => {
@@ -359,6 +413,19 @@ describe('mapZkEventData — zk-verifier', () => {
             named({ circuit_id: 'transfer', version: 1 })
         );
         expect(result).toEqual({ circuit_id: 'transfer', version: 1 });
+    });
+
+    it('maps the version lifecycle events', () => {
+        for (const method of ['versionRetired', 'versionUnretired']) {
+            expect(mapZkEventData(method, positional(1, 1))).toEqual({ circuit_id: 1, version: 1 });
+        }
+        expect(mapZkEventData('circuitPurged', positional(6, 2))).toEqual({
+            circuit_id: 6,
+            removed: 2,
+        });
+        expect(mapZkEventData('batchVerificationKeysRegistered', positional(2))).toEqual({
+            count: 2,
+        });
     });
 });
 

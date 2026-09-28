@@ -22,8 +22,8 @@ export type PrecompileMethod =
     | 'shield'
     | 'unshield'
     | 'privateTransfer'
-    | 'shieldBatch'
-    | 'claimShieldedFees';
+    | 'commitRelay'
+    | 'claimRelayFees';
 
 export type DecodedPrecompile = {
     fnSig: string;
@@ -44,8 +44,8 @@ export type DecodedPrecompile = {
 function methodOf(fnSig: string): PrecompileMethod | null {
     if (fnSig.startsWith('unshield(')) return 'unshield';
     if (fnSig.startsWith('privateTransfer(')) return 'privateTransfer';
-    if (fnSig.startsWith('shieldBatch(')) return 'shieldBatch';
-    if (fnSig.startsWith('claimShieldedFees(')) return 'claimShieldedFees';
+    if (fnSig.startsWith('commitRelay(')) return 'commitRelay';
+    if (fnSig.startsWith('claimRelayFees(')) return 'claimRelayFees';
     if (fnSig.startsWith('shield(')) return 'shield';
     return null;
 }
@@ -131,9 +131,8 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
         }
     }
 
-    // privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32[,bytes])
-    // ABI head after selector (both the legacy 8-slot and current 9-slot layout —
-    // every field read below sits at the same offset in both):
+    // privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32)
+    // ABI head after selector (8 slots):
     // [0-31] offset→proof | [32-63] root | [64-95] offset→nullifiers
     // [96-127] offset→commitments | [128-159] offset→memos
     // [160-191] assetId (uint32) | [192-223] fee (uint256) | [224-255] circuit_version (uint32)
@@ -172,27 +171,36 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
         }
     }
 
-    // claimShieldedFees(bytes32,uint256,uint32,bytes,bytes,bytes,uint32)
-    // ABI head after selector (7 slots × 32 = 224 bytes):
-    // [0-31]   commitment (bytes32)
-    // [32-63]  amount (uint256)
-    // [64-95]  asset_id (uint32, right-aligned)
-    // [96-127] offset → memo
-    // [128-159] offset → proof
-    // [160-191] offset → publicSignals
-    // [192-223] circuit_version (uint32, right-aligned)
-    if (fnSig.startsWith('claimShieldedFees(')) {
+    // commitRelay(bytes32[]) — head: [0-31] offset → commits; then count, items.
+    if (fnSig.startsWith('commitRelay(')) {
         try {
             const data = fromHex(input.slice(10));
-            if (!hasFullHead(data, 7)) return { fnSig, method: methodOf(fnSig), args: {} };
-            const commitment = toHex(data.slice(0, 32));
-            const amount = decodeUint(data, 32);
-            const assetId = decodeUint(data, 64);
-            const circuitVersion = decodeUint(data, 192);
+            if (!hasFullHead(data, 1)) return { fnSig, method: methodOf(fnSig), args: {} };
+            const offset = decodeUint(data, 0);
+            if (offset > BigInt(data.length - 32))
+                return { fnSig, method: methodOf(fnSig), args: {} };
+            const count = Number(decodeUint(data, Number(offset)));
+            const commits: string[] = [];
+            for (let i = 0; i < count; i++) {
+                const start = Number(offset) + 32 + 32 * i;
+                if (start + 32 > data.length) break;
+                commits.push(toHex(data.slice(start, start + 32)));
+            }
+            return { fnSig, method: methodOf(fnSig), args: { count, commits } };
+        } catch {
+            return { fnSig, method: methodOf(fnSig), args: {} };
+        }
+    }
+
+    // claimRelayFees(uint32,uint256) — head: [0-31] asset_id, [32-63] amount.
+    if (fnSig.startsWith('claimRelayFees(')) {
+        try {
+            const data = fromHex(input.slice(10));
+            if (!hasFullHead(data, 2)) return { fnSig, method: methodOf(fnSig), args: {} };
             return {
                 fnSig,
                 method: methodOf(fnSig),
-                args: { commitment, amount, assetId, circuitVersion },
+                args: { assetId: decodeUint(data, 0), amount: decodeUint(data, 32) },
             };
         } catch {
             return { fnSig, method: methodOf(fnSig), args: {} };

@@ -11,12 +11,13 @@
  *
  * Suffix, not prefix. Ethereum's own convention pads the other way, and a
  * function that follows it produces a well-formed account that this chain has
- * never heard of — see `evmAddressToAccountId`.
+ * never heard of.
  *
  * Every decode returns null rather than throwing: an address arrives from a
  * paste, a QR or an RPC, so a malformed one is ordinary input and the caller
  * decides what to say about it.
  */
+import { blake2b } from '@noble/hashes/blake2.js';
 import { bytesToBigintLE } from './encoding/bytes';
 import { isHexOfLength, fromHex } from './encoding/hex';
 import { BN254_R } from './crypto/constants';
@@ -51,25 +52,6 @@ export function parseEvmAddress(addr: string): string | null {
  */
 export function isEvmAddress(addr: string): boolean {
     return /^0x[0-9a-fA-F]{40}$/.test(addr);
-}
-
-/**
- * Pads a 20-byte EVM address to 32 bytes by PREPENDING 12 zero bytes.
- *
- * The Ethereum convention, NOT Orbinum's. This chain maps an H160 to an account
- * by appending — `evmToImplicitSubstrate` is the one that matches the runtime,
- * and the two produce different accounts for the same address.
- *
- * Kept for callers that need the Ethereum-shaped padding (an H256 topic, an ABI
- * word). Anything that has to name an Orbinum account wants the other one.
- */
-export function evmAddressToAccountId(evmAddr: string): Uint8Array {
-    const clean = cleanEvmAddress(evmAddr);
-    const bytes = new Uint8Array(32);
-    for (let i = 0; i < 20; i++) {
-        bytes[i + 12] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-    }
-    return bytes;
 }
 
 /**
@@ -283,15 +265,27 @@ export function addressToAccountIdHex(addr: string): string | null {
 
 /**
  * Any address — SS58, EVM H160, or 0x-prefixed AccountId32 hex — as the BN254
- * scalar the circuits take for their `recipient` public signal.
+ * scalar the unshield circuit takes for its `recipient` public signal.
  *
  * The mapping is circuit-defined, not a convention this library chose: EVM
- * addresses become `H160 ++ [0x00; 12]`, the 32 bytes are read little-endian,
- * and the value is reduced mod BN254_R. Getting any of those three wrong makes
- * the proof verify against a DIFFERENT recipient — the funds go to whoever that
- * scalar happens to name.
+ * addresses become `H160 ++ [0x00; 12]`, then
+ *
+ * - circuit v1: the 32 bytes read little-endian, mod BN254_R;
+ * - circuit v2 (memo-bound): `blake2_256(bytes)` read little-endian, mod BN254_R.
+ *
+ * v1 maps `R` and `R ± r` — two different accounts — to the same scalar, so a
+ * copier could redirect a pending unshield to an account nobody controls; v2's
+ * hash closes that. Getting any step wrong makes the proof verify against a
+ * DIFFERENT recipient. The chain applies the same rule per verifying key
+ * (`pallet_zk_verifier::encoding::encode_unshield`).
+ *
+ * Only versions whose rule is known are accepted: a future version could bind
+ * the recipient differently, and guessing would prove against the wrong one.
  */
-export function addressToFieldElement(address: string): bigint {
+export function addressToFieldElement(address: string, circuitVersion: number): bigint {
+    if (circuitVersion !== 1 && circuitVersion !== 2) {
+        throw new Error(`No recipient encoding for circuit version ${circuitVersion}`);
+    }
     const accountIdHex = addressToAccountIdHex(address);
     if (!accountIdHex) throw new Error(`Cannot resolve address to AccountId32: ${address}`);
     // Shape-checked before the decode, even though every branch of
@@ -304,5 +298,6 @@ export function addressToFieldElement(address: string): bigint {
         throw new Error(`AccountId32 must be 32 bytes of hex: ${accountIdHex}`);
     }
     const bytes = fromHex(accountIdHex);
-    return bytesToBigintLE(bytes) % BN254_R;
+    const bound = circuitVersion === 2 ? blake2b(bytes, { dkLen: 32 }) : bytes;
+    return bytesToBigintLE(bound) % BN254_R;
 }

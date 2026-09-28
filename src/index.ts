@@ -49,12 +49,7 @@ export type { TxFinalizedPayload } from 'polkadot-api';
 
 // Surviving a connection that died between submit and finalization. Generic
 // Substrate recovery: the on-chain predicate is the caller's.
-export {
-    isConnectionLossError,
-    txLandedAfterError,
-    recoveredTxResult,
-    RECOVERED_TX_RESULT,
-} from './chain/txRecovery';
+export { isConnectionLossError, txLandedAfterError, recoveredTxResult } from './chain/txRecovery';
 export type { TxLandingPollOptions } from './chain/txRecovery';
 
 // The EVM side is named rather than splatted: its `precompiles/` barrel also

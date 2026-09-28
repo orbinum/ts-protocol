@@ -77,6 +77,11 @@ const ERROR_KINDS: Readonly<Record<string, PalletErrorKind>> = {
     FeeTooLow: 'amount',
     InsufficientPendingFees: 'amount',
 
+    // Relayer calls (commit_relay / claim_relay_fees)
+    RelayerNotRegistered: 'shape',
+    NotRegistered: 'shape',
+    TooManyCommits: 'capacity',
+
     // Proofs
     InvalidProof: 'proof',
     ProofVerificationFailed: 'proof',
@@ -128,7 +133,45 @@ export function classifyChainError(rawMessage: string): PalletErrorKind {
         const kind = palletErrorKind(name);
         if (kind !== 'unknown') return kind;
     }
+    const pool = poolRejectionKind(rawMessage);
+    if (pool !== 'unknown') return pool;
     return isMissingMerkleProof(rawMessage) ? 'ghost-note' : 'unknown';
+}
+
+/**
+ * Pool-admission rejection codes of an unsigned spend (`Custom error: N`), as
+ * `pallet_shielded_pool::validate_unsigned::codes` defines them. A gasless spend
+ * that would fail is refused here, before any block, so these replace the
+ * pallet error names for that path.
+ */
+const POOL_REJECTION_KINDS: Readonly<Record<number, PalletErrorKind>> = {
+    1: 'stale-proof', // UNKNOWN_ROOT: prove against a fresh root
+    2: 'shape', // ALL_INPUTS_DUMMY
+    3: 'amount', // INSUFFICIENT_POOL_BALANCE
+    4: 'amount', // AMOUNT_OVERFLOW
+    10: 'proof', // UNSUPPORTED_CIRCUIT_VERSION
+    11: 'shape', // INVALID_MEMO
+    12: 'proof', // INVALID_PROOF
+    13: 'shape', // INVALID_SPEND: a check the dispatchable would fail
+};
+
+/** The pool-admission code inside a raw error (`Custom error: N`), or null. */
+export function extractPoolRejection(raw: string): number | null {
+    const code = raw.match(/Custom(?: error:|\()\s*(\d+)/)?.[1];
+    return code === undefined ? null : Number(code);
+}
+
+/**
+ * Classifies a pool-admission rejection. Besides the custom codes, `Stale`
+ * (the nullifier is already spent) and `Payment` (fee below the floor) arrive
+ * as standard invalid-transaction variants.
+ */
+export function poolRejectionKind(raw: string): PalletErrorKind {
+    const code = extractPoolRejection(raw);
+    if (code !== null) return POOL_REJECTION_KINDS[code] ?? 'unknown';
+    if (/Transaction is outdated|\bStale\b/.test(raw)) return 'already-spent';
+    if (/Inability to pay some fees|\bPayment\b/.test(raw)) return 'amount';
+    return 'unknown';
 }
 
 /** The merkle-proof RPC reporting no leaf for a commitment. */

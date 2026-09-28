@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-28
+
+**Breaking** — for runtime spec 16, with every compatibility shim removed:
+`claimShieldedFees`, `CircuitId.ValueProof`, `RECOVERED_TX_RESULT` and
+`evmAddressToAccountId` are gone, `addressToFieldElement` needs the circuit
+version, and new notes are v2.
+
+### Added
+
+- **`memoHash(memos)`** — the `memo_hash` public input of the v2 transfer and
+  unshield circuits: blake2_256 over the SCALE-encoded memo list, little-endian,
+  reduced mod BN254 `r`. It binds the encrypted memos to the proof, so a copy of a
+  spend with swapped memos no longer verifies. Byte-for-byte identical to what
+  the chain derives (`statement::memo_digest`, reduced mod r); the test vectors
+  are shared with the node and `@orbinum/wallet-sdk`.
+- **Public relay fee claim (runtime spec 16).** `ShieldedPoolModule.claimRelayFees`
+  (`claim_relay_fees`, signed, no note or proof) and, on the precompile,
+  `ShieldedPoolPrecompile.claimRelayFees` / `buildClaimRelayFeesCalldata` /
+  `estimateClaimRelayFeesGas` (`claimRelayFees(uint32,uint256)`, `0x2a3274dd`).
+  The pallet pays the account of the caller's registered EVM address, or the
+  caller when unregistered.
+- **Relayer selectors and decoders:** `SP_SEL.COMMIT_RELAY` (`0xc9b235ff`) and
+  `SP_SEL.CLAIM_RELAY_FEES`; `decodePrecompileCalldata` names both.
+- **Pool rejection codes.** `extractPoolRejection(raw)` reads `Custom error: N`
+  from a refused unsigned spend and `poolRejectionKind(raw)` maps it (and
+  `Stale` / `Payment`) to a `PalletErrorKind`; `classifyChainError` falls back to
+  them. New pallet names: `RelayerNotRegistered`, `NotRegistered`,
+  `TooManyCommits`.
+- **Claim parameters are checked the same on both paths.** `claimRelayFees`
+  (pallet) and `buildClaimRelayFeesCalldata` (precompile) share one check:
+  `assetId` a u32 and `amount` in `1..2^128-1`. The pallet path used to accept an
+  out-of-range asset id or amount and fail only at encoding.
+- **Extrinsic and event mappers follow spec 16.** `mapExtrinsicArgs` names
+  `private_transfer`'s `asset_id` / `fee` / `circuit_version`, `unshield`'s `fee`
+  / change note / `circuit_version`, `commit_relay`, `claim_relay_fees`, and
+  zk-verifier `retire_version` / `unretire_version` / `purge_circuit`.
+  `mapZkEventData` maps `Unshielded`'s change note, `TreeSealed`,
+  `RelayFeesClaimed`, `VersionRetired` / `VersionUnretired`, `CircuitPurged` and
+  `BatchVerificationKeysRegistered`.
+- **Spec-16 pallet types:** `CommitRelayArgs` / `ClaimRelayFeesArgs` in
+  `ShieldedPoolCall`, and `RelayFeesClaimedEvent` in `ShieldedPoolEvent`.
+
+### Removed
+
+- **`claimShieldedFees`** — builders (`buildClaimShieldedFeesCalldata`,
+  `ClaimShieldedFeesParams`), its `0x88d9deba` selector and its decoder: the call
+  is gone in runtime spec 16 and was never called on-chain, so
+  `decodePrecompileCalldata` returns null for it.
+- `'shieldBatch'` from `PrecompileMethod`: the precompile has no such selector,
+  so it was never produced.
+- **`CircuitId.ValueProof`** (6): the circuit is retired on-chain and
+  `@orbinum/circuits` 0.15.0 no longer ships it. `CircuitId` is now
+  `{ Transfer: 1, Unshield: 2 }`.
+- The unexported, unused pallet-zk-verifier call and event types, which had
+  fallen behind the pallet (no retire / unretire / purge).
+- **`ZkVerifierCircuitVersionInfo.proofSystem` / `historicalVersions`,
+  `ZkVerifierVkHash.stats`** and the `ZkVerifierVersionStats` /
+  `ZkVerifierHistoricalVersion` types: the node's `zkVerifier_*` RPC returns
+  none of them, and the module filled them with constants.
+- **`RECOVERED_TX_RESULT`**: use `recoveredTxResult(txHash)`, which keeps the
+  hash.
+- **`evmAddressToAccountId`** (Ethereum's prefix padding): no Orbinum account
+  is formed that way; `evmToImplicitSubstrate` is the runtime's mapping.
+- Mapper aliases for names the chain does not use: the `deposit`, `withdraw`,
+  `merkleroot` and `privatetransfer` events, the `transfer` call, and alternate
+  field names.
+
+### Fixed
+
+- **`mapZkEventData` no longer maps `balances.Deposit` / `Withdraw` as shielded
+  events.** It keys on the method name alone, and its `deposit` / `withdraw`
+  aliases for `Shielded` / `Unshielded` swallowed the balances events (fee
+  refunds and withdrawals) with the wrong fields. `Withdraw` now reaches the
+  balances mapping.
+
+### Changed
+
+- **`CURRENT_CIRCUIT_VERSION` = 2.** New notes are created under the memo-bound
+  transfer / unshield circuits; v1 notes keep their stamp and spend under v2.
+- **`addressToFieldElement(address, circuitVersion)`** — circuit v2 binds the
+  unshield recipient as `blake2_256(accountId32)` little-endian mod `r`. v1's raw
+  `mod r` maps an account `R` and its alias `R ± r` to the same scalar, which let
+  a copier redirect a pending unshield to an account nobody controls. The version
+  is required — the one you prove with; any version other than 1 or 2 throws
+  rather than guessing a rule.
+
 ## [0.5.0]
 
 ### Added

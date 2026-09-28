@@ -168,6 +168,16 @@ describe('pallet-events types', () => {
         }
     });
 
+    it('ShieldedPoolEvent covers RelayFeesClaimed variant', () => {
+        const event: ShieldedPoolEvent = {
+            type: 'RelayFeesClaimed',
+            data: { who: '5Grw', to: '5Grw', assetId: 0, amount: 4000n },
+        };
+        if (event.type === 'RelayFeesClaimed') {
+            expect(event.data.amount).toBe(4000n);
+        }
+    });
+
     it('ShieldedPoolEvent covers NullifiersSpent variant', () => {
         const event: ShieldedPoolEvent = {
             type: 'NullifiersSpent',

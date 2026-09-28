@@ -116,14 +116,27 @@ export type AssetUnverifiedEvent = {
     assetId: number;
 };
 
+/**
+ * Emitted by `claim_relay_fees()` (runtime spec 16+).
+ * Rust variant: `RelayFeesClaimed { who, to, asset_id, amount }`
+ */
+export type RelayFeesClaimedEvent = {
+    /** SS58 AccountId whose pending fees were spent. */
+    who: string;
+    /** SS58 AccountId paid: the account of `who`'s registered relay address, or `who`. */
+    to: string;
+    assetId: number;
+    amount: bigint;
+};
+
 // ─── Discriminated union ──────────────────────────────────────────────────────
 
 /**
  * The pallet events this SDK models, as a discriminated union.
  *
- * NOT every variant: `TreeSealed` (forest rotation) and `ValidatorFeesClaimed`
- * are emitted by the pallet and absent here. A consumer that acts on a tree
- * rotation has to read the raw event.
+ * NOT every variant: `TreeSealed` (forest rotation) is emitted by the pallet
+ * and absent here. A consumer that acts on a tree rotation has to read the raw
+ * event.
  */
 export type ShieldedPoolEvent =
     | { type: 'Shielded'; data: ShieldedEvent }
@@ -133,4 +146,5 @@ export type ShieldedPoolEvent =
     | { type: 'MerkleRootUpdated'; data: MerkleRootUpdatedEvent }
     | { type: 'AssetRegistered'; data: AssetRegisteredEvent }
     | { type: 'AssetVerified'; data: AssetVerifiedEvent }
-    | { type: 'AssetUnverified'; data: AssetUnverifiedEvent };
+    | { type: 'AssetUnverified'; data: AssetUnverifiedEvent }
+    | { type: 'RelayFeesClaimed'; data: RelayFeesClaimedEvent };

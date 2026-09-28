@@ -3,7 +3,7 @@ export {
     buildShieldCalldata,
     buildPrivateTransferCalldata,
     buildUnshieldCalldata,
-    buildClaimShieldedFeesCalldata,
+    buildClaimRelayFeesCalldata,
 } from './shieldedPoolCalldata';
 export { CryptoPrecompiles } from './CryptoPrecompiles';
 export type { EvmTxRequest, EvmSigner, KnownPrecompileInfo } from './types';

@@ -17,7 +17,7 @@ import type {
     ShieldParams,
     UnshieldParams,
     PrivateTransferParams,
-    ClaimShieldedFeesParams,
+    ClaimRelayFeesParams,
 } from '../../pallet/shielded-pool/extrinsicParams';
 import type { EvmSigner } from './types';
 import { PRECOMPILE_ADDR } from './addresses';
@@ -25,7 +25,7 @@ import {
     buildShieldCalldata,
     buildPrivateTransferCalldata,
     buildUnshieldCalldata,
-    buildClaimShieldedFeesCalldata,
+    buildClaimRelayFeesCalldata,
 } from './shieldedPoolCalldata';
 
 export class ShieldedPoolPrecompile {
@@ -51,8 +51,8 @@ export class ShieldedPoolPrecompile {
         return buildUnshieldCalldata(params);
     }
 
-    buildClaimShieldedFeesCalldata(params: ClaimShieldedFeesParams): string {
-        return buildClaimShieldedFeesCalldata(params);
+    buildClaimRelayFeesCalldata(params: ClaimRelayFeesParams): string {
+        return buildClaimRelayFeesCalldata(params);
     }
 
     // ─── shield ──────────────────────────────────────────────────────────────
@@ -113,30 +113,19 @@ export class ShieldedPoolPrecompile {
         return signer({ to: this.addr, data: buildUnshieldCalldata(params) });
     }
 
-    // ─── claimShieldedFees ───────────────────────────────────────────────────
+    // ─── claimRelayFees ──────────────────────────────────────────────────────
 
     /**
-     * Claims accrued relay fees as a private shielded note.
+     * Claims the caller's pending relay fees, publicly.
      *
-     * For validators/relayers holding fees in `pallet-relayer` who want them
-     * paid privately into the shielded pool rather than as a public balance
-     * credit. The ZK `value_proof` binds `commitment` to
-     * `(amount, assetId, ownerPk, blinding)`, so the runtime can verify the note
-     * encodes exactly the claimed amount and a malicious relayer cannot inflate
-     * the withdrawal.
+     * Spends the fees of the account registered to `msg.sender` and pays them
+     * to the account of that EVM address. No proof: the claim creates no note,
+     * and it is bounded by the claimant's own pending balance.
      *
-     * The `msg.sender` address is the validator identity, and must match the
-     * one with pending fees.
-     *
-     * Extrinsic: `shieldedPool.claim_shielded_fees(commitment, amount, assetId,
-     * memo, proof, publicSignals, circuitVersion)` — seven arguments; see
-     * `buildClaimShieldedFeesCalldata`.
+     * Extrinsic: `shieldedPool.claim_relay_fees(asset_id, amount)`.
      */
-    async claimShieldedFees(params: ClaimShieldedFeesParams, signer: EvmSigner): Promise<string> {
-        return signer({
-            to: this.addr,
-            data: buildClaimShieldedFeesCalldata(params),
-        });
+    async claimRelayFees(params: ClaimRelayFeesParams, signer: EvmSigner): Promise<string> {
+        return signer({ to: this.addr, data: buildClaimRelayFeesCalldata(params) });
     }
 
     // ─── Gas estimation ──────────────────────────────────────────────────────
@@ -170,14 +159,11 @@ export class ShieldedPoolPrecompile {
         return this.evm.estimateGas({ from, to: this.addr, data: buildUnshieldCalldata(params) });
     }
 
-    async estimateClaimShieldedFeesGas(
-        params: ClaimShieldedFeesParams,
-        from: string
-    ): Promise<bigint> {
+    async estimateClaimRelayFeesGas(params: ClaimRelayFeesParams, from: string): Promise<bigint> {
         return this.evm.estimateGas({
             from,
             to: this.addr,
-            data: buildClaimShieldedFeesCalldata(params),
+            data: buildClaimRelayFeesCalldata(params),
         });
     }
 }

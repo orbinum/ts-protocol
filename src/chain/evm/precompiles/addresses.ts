@@ -37,8 +37,10 @@ export const SP_SEL = {
     PRIVATE_TRANSFER: new Uint8Array([0x66, 0xed, 0x2c, 0xd4]),
     // unshield(bytes,bytes32,bytes32,uint32,uint256,bytes32,uint256,bytes32,bytes,uint32)  → 0x4e505348
     UNSHIELD: new Uint8Array([0x4e, 0x50, 0x53, 0x48]),
-    // claimShieldedFees(bytes32,uint256,uint32,bytes,bytes,bytes,uint32)         → 0x88d9deba
-    CLAIM_SHIELDED_FEES: new Uint8Array([0x88, 0xd9, 0xde, 0xba]),
+    // commitRelay(bytes32[])                                                     → 0xc9b235ff
+    COMMIT_RELAY: new Uint8Array([0xc9, 0xb2, 0x35, 0xff]),
+    // claimRelayFees(uint32,uint256)                                             → 0x2a3274dd
+    CLAIM_RELAY_FEES: new Uint8Array([0x2a, 0x32, 0x74, 0xdd]),
 } as const;
 
 // ─── Known Precompiles registry ───────────────────────────────────────────────
@@ -71,7 +73,8 @@ export const KNOWN_PRECOMPILES: Record<string, KnownPrecompileInfo> = {
                 'privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32)',
             '4e505348':
                 'unshield(bytes,bytes32,bytes32,uint32,uint256,bytes32,uint256,bytes32,bytes,uint32)',
-            '88d9deba': 'claimShieldedFees(bytes32,uint256,uint32,bytes,bytes,bytes,uint32)',
+            c9b235ff: 'commitRelay(bytes32[])',
+            '2a3274dd': 'claimRelayFees(uint32,uint256)',
         },
     },
 };

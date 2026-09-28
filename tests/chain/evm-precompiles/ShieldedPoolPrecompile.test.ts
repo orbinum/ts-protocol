@@ -9,7 +9,7 @@ import type {
     ShieldParams,
     UnshieldParams,
     PrivateTransferParams,
-    ClaimShieldedFeesParams,
+    ClaimRelayFeesParams,
 } from '../../../src/chain/pallet/shielded-pool/extrinsicParams';
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
@@ -358,241 +358,63 @@ describe('ShieldedPoolPrecompile.estimateUnshieldGas', () => {
     });
 });
 
-// ─── claimShieldedFees fixtures ───────────────────────────────────────────────
+// ─── claimRelayFees ───────────────────────────────────────────────────────────
 
-/** Builds a valid 76-byte public_signals buffer for the given (commitment, amount, assetId). */
-function makePublicSignals(commitment: string, amount: bigint, assetId: number): Uint8Array {
-    const ps = new Uint8Array(76);
-    const commitmentBytes = fromHex(commitment);
-    ps.set(commitmentBytes, 0); // [0..32] commitment
-    // [32..40] amount as u64 LE
-    const view = new DataView(ps.buffer);
-    view.setBigUint64(32, BigInt.asUintN(64, amount), true /* little-endian */);
-    // [40..44] assetId as u32 LE
-    view.setUint32(40, assetId, true /* little-endian */);
-    // [44..76] owner_hash — leave as zeros
-    return ps;
-}
+const CLAIM_PARAMS: ClaimRelayFeesParams = { assetId: 3, amount: 500_000n };
 
-const CSF_COMMITMENT = '0x' + '11'.repeat(32);
-const CSF_AMOUNT = 500_000n;
-const CSF_ASSET_ID = 0;
-const CSF_PROOF = new Uint8Array(128).fill(0x01); // 128-byte Groth16 proof
-const CSF_MEMO = new Uint8Array(180);
-const CSF_SIGNALS = makePublicSignals(CSF_COMMITMENT, CSF_AMOUNT, CSF_ASSET_ID);
-
-const CLAIM_PARAMS: ClaimShieldedFeesParams = {
-    commitment: CSF_COMMITMENT,
-    amount: CSF_AMOUNT,
-    assetId: CSF_ASSET_ID,
-    proof: CSF_PROOF,
-    publicSignals: CSF_SIGNALS,
-    encryptedMemo: CSF_MEMO,
-    circuitVersion: 1,
-};
-
-// ─── buildClaimShieldedFeesCalldata ───────────────────────────────────────────
-
-describe('ShieldedPoolPrecompile.buildClaimShieldedFeesCalldata', () => {
-    it('starts with CLAIM_SHIELDED_FEES selector', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const calldata = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        expect(calldata.startsWith(toHex(SP_SEL.CLAIM_SHIELDED_FEES))).toBe(true);
-    });
-
-    it('selector bytes are 0x88d9deba', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const calldata = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        expect(calldata.slice(0, 10)).toBe('0x88d9deba');
-    });
-
-    it('encodes circuitVersion in the 7th head slot (bytes [192..224])', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const calldata = precompile.buildClaimShieldedFeesCalldata({
-            ...CLAIM_PARAMS,
-            circuitVersion: 3,
-        });
-        // head slot 7 = bytes [192..224]; hex offset after '0x' + selector(8) = 10 + 192*2
-        const slot = calldata.slice(10 + 192 * 2, 10 + 224 * 2);
-        expect(BigInt('0x' + slot)).toBe(3n);
-    });
-
-    it('returns a 0x-prefixed hex string', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        expect(precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS).startsWith('0x')).toBe(true);
-    });
-
-    it('is deterministic — same params produce same calldata', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        expect(precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS)).toBe(
-            precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS)
+describe('ShieldedPoolPrecompile.buildClaimRelayFeesCalldata', () => {
+    it('is the selector, then asset_id and amount as two words', () => {
+        const calldata = new ShieldedPoolPrecompile(mockEvm()).buildClaimRelayFeesCalldata(
+            CLAIM_PARAMS
         );
+        const bytes = fromHex(calldata);
+        expect(calldata.startsWith(toHex(SP_SEL.CLAIM_RELAY_FEES))).toBe(true);
+        expect(toHex(SP_SEL.CLAIM_RELAY_FEES)).toBe('0x2a3274dd');
+        expect(bytes.length).toBe(4 + 64);
+        expect(bytes[4 + 31]).toBe(3);
+        expect(BigInt(toHex(bytes.slice(36, 68)))).toBe(500_000n);
     });
 
-    it('encodes commitment as the first 32-byte slot after the selector', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const calldata = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        // bytes [4..36] = commitment (32 bytes → 64 hex chars after the 4-byte selector)
-        const commitmentInCalldata = '0x' + calldata.slice(10, 74);
-        expect(commitmentInCalldata).toBe(CSF_COMMITMENT);
+    it('refuses a zero, negative or over-u128 amount', () => {
+        const sp = new ShieldedPoolPrecompile(mockEvm());
+        for (const amount of [0n, -1n, 1n << 128n]) {
+            expect(() => sp.buildClaimRelayFeesCalldata({ ...CLAIM_PARAMS, amount })).toThrow(
+                /amount/
+            );
+        }
     });
 
-    it('encodes different commitments into different calldata', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const other = '0x' + '22'.repeat(32);
-        const a = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        const b = precompile.buildClaimShieldedFeesCalldata({
-            ...CLAIM_PARAMS,
-            commitment: other,
-            publicSignals: makePublicSignals(other, CSF_AMOUNT, CSF_ASSET_ID),
-        });
-        expect(a).not.toBe(b);
-    });
-
-    it('encodes different amounts into different calldata', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const a = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        const b = precompile.buildClaimShieldedFeesCalldata({
-            ...CLAIM_PARAMS,
-            amount: CSF_AMOUNT + 1n,
-            publicSignals: makePublicSignals(CSF_COMMITMENT, CSF_AMOUNT + 1n, CSF_ASSET_ID),
-        });
-        expect(a).not.toBe(b);
-    });
-
-    it('encodes different assetIds into different calldata', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const a = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        const b = precompile.buildClaimShieldedFeesCalldata({
-            ...CLAIM_PARAMS,
-            assetId: 1,
-            publicSignals: makePublicSignals(CSF_COMMITMENT, CSF_AMOUNT, 1),
-        });
-        expect(a).not.toBe(b);
-    });
-
-    it('contains the publicSignals bytes verbatim inside the calldata', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const calldata = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        // publicSignals (76 bytes) must appear somewhere in the raw calldata bytes
-        const calldataBytes = fromHex(calldata);
-        const psHex = toHex(CSF_SIGNALS).slice(2); // without 0x
-        expect(calldata.includes(psHex)).toBe(true);
-        void calldataBytes; // suppress unused warning
-    });
-
-    it('minimum calldata length: selector(4) + head(7×32) + 3 dynamic tails', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const calldata = precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS);
-        // head is now 7 slots (added trailing uint32 circuitVersion): 4 + 224 (head) + ≥3×32 tails
-        expect(calldata.length).toBeGreaterThanOrEqual(2 + (4 + 224 + 96) * 2);
-    });
-
-    it('throws when proof is empty', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
+    it('refuses an asset id past u32', () => {
         expect(() =>
-            precompile.buildClaimShieldedFeesCalldata({ ...CLAIM_PARAMS, proof: new Uint8Array(0) })
-        ).toThrow(/proof must not be empty/);
-    });
-
-    it('throws when publicSignals is not 76 bytes (too short)', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        expect(() =>
-            precompile.buildClaimShieldedFeesCalldata({
+            new ShieldedPoolPrecompile(mockEvm()).buildClaimRelayFeesCalldata({
                 ...CLAIM_PARAMS,
-                publicSignals: new Uint8Array(75),
+                assetId: 2 ** 32,
             })
-        ).toThrow(/publicSignals must be 76 bytes/);
-    });
-
-    it('throws when publicSignals is not 76 bytes (too long)', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        expect(() =>
-            precompile.buildClaimShieldedFeesCalldata({
-                ...CLAIM_PARAMS,
-                publicSignals: new Uint8Array(77),
-            })
-        ).toThrow(/publicSignals must be 76 bytes/);
-    });
-
-    it('throws when encryptedMemo has wrong size', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        expect(() =>
-            precompile.buildClaimShieldedFeesCalldata({
-                ...CLAIM_PARAMS,
-                encryptedMemo: new Uint8Array(100),
-            })
-        ).toThrow(/EncryptedMemo: invalid size.*expected 180 bytes, got 100/);
+        ).toThrow();
     });
 });
 
-// ─── claimShieldedFees (signer call) ─────────────────────────────────────────
-
-describe('ShieldedPoolPrecompile.claimShieldedFees', () => {
-    it('calls signer with SHIELDED_POOL address', async () => {
+describe('ShieldedPoolPrecompile.claimRelayFees', () => {
+    it('signs a non-payable call to the shielded pool with the claim calldata', async () => {
         const signer: EvmSigner = vi.fn().mockResolvedValue('0xtxhash');
-        await new ShieldedPoolPrecompile(mockEvm()).claimShieldedFees(CLAIM_PARAMS, signer);
-        expect(vi.mocked(signer).mock.calls[0]?.[0]?.to).toBe(PRECOMPILE_ADDR.SHIELDED_POOL);
-    });
-
-    it('calldata starts with CLAIM_SHIELDED_FEES selector', async () => {
-        const signer: EvmSigner = vi.fn().mockResolvedValue('0xtxhash');
-        await new ShieldedPoolPrecompile(mockEvm()).claimShieldedFees(CLAIM_PARAMS, signer);
-        const data = vi.mocked(signer).mock.calls[0]?.[0]?.data as string;
-        expect(data.startsWith(toHex(SP_SEL.CLAIM_SHIELDED_FEES))).toBe(true);
-    });
-
-    it('does not pass a value field (not payable)', async () => {
-        const signer: EvmSigner = vi.fn().mockResolvedValue('0xtxhash');
-        await new ShieldedPoolPrecompile(mockEvm()).claimShieldedFees(CLAIM_PARAMS, signer);
-        const tx = vi.mocked(signer).mock.calls[0]?.[0];
-        expect(tx?.value).toBeUndefined();
-    });
-
-    it('returns the tx hash from signer', async () => {
-        const signer: EvmSigner = vi.fn().mockResolvedValue('0xdeadbeef');
-        const result = await new ShieldedPoolPrecompile(mockEvm()).claimShieldedFees(
+        const hash = await new ShieldedPoolPrecompile(mockEvm()).claimRelayFees(
             CLAIM_PARAMS,
             signer
         );
-        expect(result).toBe('0xdeadbeef');
-    });
-
-    it('calldata is identical to buildClaimShieldedFeesCalldata output', async () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const signer: EvmSigner = vi.fn().mockResolvedValue('0xtx');
-        await precompile.claimShieldedFees(CLAIM_PARAMS, signer);
-        const sentData = vi.mocked(signer).mock.calls[0]?.[0]?.data as string;
-        expect(sentData).toBe(precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS));
+        const tx = vi.mocked(signer).mock.calls[0]?.[0];
+        expect(hash).toBe('0xtxhash');
+        expect(tx?.to).toBe(PRECOMPILE_ADDR.SHIELDED_POOL);
+        expect(tx?.value).toBeUndefined();
+        expect((tx?.data as string).startsWith('0x2a3274dd')).toBe(true);
     });
 });
 
-// ─── estimateClaimShieldedFeesGas ─────────────────────────────────────────────
-
-describe('ShieldedPoolPrecompile.estimateClaimShieldedFeesGas', () => {
-    it('calls evm.estimateGas and returns bigint', async () => {
+describe('ShieldedPoolPrecompile.estimateClaimRelayFeesGas', () => {
+    it('estimates from the real sender against the shielded pool', async () => {
         const evm = mockEvm();
-        const result = await new ShieldedPoolPrecompile(evm).estimateClaimShieldedFeesGas(
-            CLAIM_PARAMS,
-            '0xfrom'
-        );
-        expect(typeof result).toBe('bigint');
-        expect(vi.mocked(evm.estimateGas)).toHaveBeenCalledOnce();
-    });
-
-    it('passes from and to=SHIELDED_POOL to estimateGas', async () => {
-        const evm = mockEvm();
-        await new ShieldedPoolPrecompile(evm).estimateClaimShieldedFeesGas(CLAIM_PARAMS, '0xfrom');
+        await new ShieldedPoolPrecompile(evm).estimateClaimRelayFeesGas(CLAIM_PARAMS, '0xfrom');
         const args = vi.mocked(evm.estimateGas).mock.calls[0]?.[0];
         expect(args?.from).toBe('0xfrom');
         expect(args?.to).toBe(PRECOMPILE_ADDR.SHIELDED_POOL);
-    });
-
-    it('passes calldata matching buildClaimShieldedFeesCalldata to estimateGas', async () => {
-        const evm = mockEvm();
-        const precompile = new ShieldedPoolPrecompile(evm);
-        await precompile.estimateClaimShieldedFeesGas(CLAIM_PARAMS, '0xfrom');
-        const args = vi.mocked(evm.estimateGas).mock.calls[0]?.[0];
-        expect(args?.data).toBe(precompile.buildClaimShieldedFeesCalldata(CLAIM_PARAMS));
     });
 });

@@ -20,15 +20,13 @@ import type {
     ShieldParams,
     UnshieldParams,
     PrivateTransferParams,
-    ClaimShieldedFeesParams,
+    ClaimRelayFeesParams,
 } from '../../pallet/shielded-pool/extrinsicParams';
+import { assertClaimRelayFeesParams } from '../../pallet/shielded-pool/validation';
 import { MemoFormat } from '../../../protocol/memo/index';
 import { fromHex, isHexOfLength } from '../../../foundation/encoding/hex';
 import { encodeHex } from './abi';
 import { SP_SEL } from './addresses';
-
-/** Groth16 public signals for a fee claim, in bytes. */
-const CLAIM_PUBLIC_SIGNALS_SIZE = 76;
 
 // ─── Field guards ────────────────────────────────────────────────────────────
 
@@ -176,35 +174,15 @@ export function buildUnshieldCalldata(params: UnshieldParams): string {
 }
 
 /**
- * Calldata for `claimShieldedFees(bytes32,uint256,uint32,bytes,bytes,bytes,uint32)`.
- *
- * The validator identity is derived from `msg.sender` in the precompile, so it
- * is deliberately absent from the calldata.
+ * Calldata for `claimRelayFees(uint32,uint256)`: pays the caller's pending relay
+ * fees out of the pool to the account of its EVM address. No proof — the claim
+ * is public and bounded by the caller's own pending balance.
  */
-export function buildClaimShieldedFeesCalldata(params: ClaimShieldedFeesParams): string {
-    MemoFormat.validate(params.encryptedMemo, 'buildClaimShieldedFeesCalldata.encryptedMemo');
-
-    if (params.proof.length === 0) {
-        throw new Error('claimShieldedFees: proof must not be empty');
-    }
-    if (params.publicSignals.length !== CLAIM_PUBLIC_SIGNALS_SIZE) {
-        throw new Error(
-            `claimShieldedFees: publicSignals must be ${CLAIM_PUBLIC_SIGNALS_SIZE} bytes, got ${params.publicSignals.length}`
-        );
-    }
-    const commitment = bytes32(params.commitment, 'buildClaimShieldedFeesCalldata.commitment');
-
+export function buildClaimRelayFeesCalldata(params: ClaimRelayFeesParams): string {
+    assertClaimRelayFeesParams(params, 'buildClaimRelayFeesCalldata');
     return encodeHex(
-        SP_SEL.CLAIM_SHIELDED_FEES,
-        { type: 'bytes32', value: commitment },
-        { type: 'uint', value: params.amount },
-        { type: 'uint', value: uint32(params.assetId, 'buildClaimShieldedFeesCalldata.assetId') },
-        { type: 'bytes', value: params.encryptedMemo },
-        { type: 'bytes', value: params.proof },
-        { type: 'bytes', value: params.publicSignals },
-        {
-            type: 'uint',
-            value: uint32(params.circuitVersion, 'buildClaimShieldedFeesCalldata.circuitVersion'),
-        }
+        SP_SEL.CLAIM_RELAY_FEES,
+        { type: 'uint', value: BigInt(params.assetId) },
+        { type: 'uint', value: params.amount }
     );
 }

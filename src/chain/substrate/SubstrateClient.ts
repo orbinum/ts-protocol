@@ -1,64 +1,20 @@
 import { createClient, Binary, type PolkadotClient, type TxFinalizedPayload } from 'polkadot-api';
 import type { SignerTxCreator as SubstrateSigner } from 'polkadot-api/tx-creator';
 import { getWsProvider } from 'polkadot-api/ws';
-import { getDynamicBuilder, getLookupFn } from '@polkadot-api/metadata-builders';
-import { decAnyMetadata, unifyMetadata } from '@polkadot-api/substrate-bindings';
-import { AccountId } from '@polkadot-api/substrate-bindings';
-import { getExtrinsicDecoder } from '@polkadot-api/tx-utils';
-import { fromHex, toHex } from '../../foundation/encoding/hex';
+import { fromHex } from '../../foundation/encoding/hex';
 import { jsonRpcBatch, wsUrlToHttp, type JsonRpcCall } from '../../foundation/jsonRpcHttp';
 import type { ChainInfo, SystemHealth, EventRecord, RawBlockHeader, BlockInfo } from './types';
 import type { RawRuntimeVersion } from './types/raw';
+import { RuntimeDecoders, type DynamicBuilder, type ExtrinsicDecoder } from './runtimeDecoders';
+import { toEventRecords } from './eventRecords';
+import { extractAuthorFromLogs, timestampFromExtrinsics } from './blockInfo';
 
-/**
- * `pallet_timestamp`'s index in the runtime's `construct_runtime!`.
- *
- * Only used by the block-time fallback, which is a heuristic on raw extrinsic
- * bytes rather than a decode. A runtime that reorders its pallets makes the
- * fallback stop matching — it degrades to no timestamp, never a wrong one.
- */
-const TIMESTAMP_PALLET = 0x01;
-
-/**
- * SCALE compact integer at `offset`, or null when the bytes run out.
- *
- * Two low bits give the mode: 0 → one byte, 1 → two, 2 → four, 3 → a
- * length-prefixed big integer. Reading a compact as a raw little-endian word
- * yields a plausible wrong number rather than an error, which is why this is
- * spelled out rather than approximated.
- */
-function decodeCompact(bytes: Uint8Array, offset: number): number | null {
-    const first = bytes[offset];
-    if (first === undefined) return null;
-    const mode = first & 0b11;
-    if (mode === 0) return first >>> 2;
-    if (mode === 1) {
-        const b1 = bytes[offset + 1];
-        return b1 === undefined ? null : ((first >>> 2) | (b1 << 6)) >>> 0;
-    }
-    const width = mode === 2 ? 4 : (first >>> 2) + 5;
-    if (offset + width > bytes.length) return null;
-    let value = 0n;
-    const start = mode === 2 ? offset : offset + 1;
-    const end = mode === 2 ? offset + 4 : offset + width;
-    for (let i = end - 1; i >= start; i--) value = (value << 8n) | BigInt(bytes[i] as number);
-    if (mode === 2) value >>= 2n;
-    // Milliseconds since the epoch stay far inside a double; anything larger is
-    // not a block time.
-    return value > BigInt(Number.MAX_SAFE_INTEGER) ? null : Number(value);
-}
-
-export type DynamicBuilder = ReturnType<typeof getDynamicBuilder>;
-export type ExtrinsicDecoder = ReturnType<typeof getExtrinsicDecoder>;
-
-type RuntimeDecoders = { builder: DynamicBuilder; extrinsic: ExtrinsicDecoder };
-
-/** Block hashes whose `spec_version` is remembered before the map is reset. */
-const SPEC_CACHE_LIMIT = 4096;
+export type { DynamicBuilder, ExtrinsicDecoder } from './runtimeDecoders';
 
 /**
  * Thin wrapper over polkadot-api (PAPI) that provides:
  * - Raw JSON-RPC calls (custom Orbinum RPCs)
+ * - Block and event reads, decoded under each block's runtime (`RuntimeDecoders`)
  * - Unsafe transaction building from call data
  * - Transaction submission with or without watching
  */
@@ -80,12 +36,10 @@ export class SubstrateClient {
         private readonly _owned: boolean
     ) {}
 
-    private _dynamicBuilder: ReturnType<typeof getDynamicBuilder> | null = null;
-    private _extDecoder: ExtrinsicDecoder | null = null;
-    /** Decoders per runtime, by `spec_version`: one metadata fetch per runtime. */
-    private readonly _runtimes = new Map<number, Promise<RuntimeDecoders>>();
-    /** `spec_version` per block hash. A hash never changes runtime. */
-    private readonly _specOfBlock = new Map<string, number>();
+    private readonly _decoders = new RuntimeDecoders(
+        (method, params) => this.request(method, params),
+        () => this._papi.getMetadata('best')
+    );
     private _inflightTxCount = 0;
 
     /**
@@ -246,7 +200,7 @@ export class SubstrateClient {
      */
     async getBlockHash(blockNumber: number): Promise<string | null> {
         const hash = await this.request<string>('chain_getBlockHash', [blockNumber]);
-        if (!hash || /^0x0+$/.test(hash) || hash === '0x' + '00'.repeat(32)) return null;
+        if (!hash || /^0x0+$/.test(hash)) return null;
         return hash;
     }
 
@@ -263,18 +217,8 @@ export class SubstrateClient {
      */
     async getBlock(hashOrNumber: string | number): Promise<BlockInfo | null> {
         try {
-            let blockHash: string;
-            if (typeof hashOrNumber === 'number' || /^\d+$/.test(String(hashOrNumber))) {
-                const num =
-                    typeof hashOrNumber === 'number'
-                        ? hashOrNumber
-                        : parseInt(hashOrNumber as string, 10);
-                const h = await this.getBlockHash(num);
-                if (!h) return null;
-                blockHash = h;
-            } else {
-                blockHash = hashOrNumber as string;
-            }
+            const blockHash = await this.resolveBlockHash(hashOrNumber);
+            if (!blockHash) return null;
 
             const raw = await this.request<{
                 block: { header: RawBlockHeader; extrinsics: string[] };
@@ -282,56 +226,40 @@ export class SubstrateClient {
             if (!raw?.block) return null;
             const { header, extrinsics } = raw.block;
 
-            // Resolve SS58 prefix and dynamic builder in parallel
             const builder = await this.getDynamicBuilder().catch(() => null);
             const ss58Prefix =
                 (builder as unknown as { ss58Prefix?: number } | null)?.ss58Prefix ?? 42;
-
-            // Fetch Timestamp.Now from storage
-            let timestampMs: number | null = null;
-            if (builder) {
-                try {
-                    const tsStore = builder.buildStorage('Timestamp', 'Now');
-                    const tsRaw = await this.request<string | null>('state_getStorage', [
-                        tsStore.keys.enc(),
-                        blockHash,
-                    ]);
-                    if (tsRaw) {
-                        timestampMs = Number(tsStore.value.dec(fromHex(tsRaw as `0x${string}`)));
-                    }
-                } catch {
-                    /* fall through to extrinsic fallback */
-                }
-            }
-
-            // Fallback: read the block time out of the `timestamp.set` call.
-            //
-            // An unsigned extrinsic is `Compact(len) || version || pallet ||
-            // call || args`, so for this one — under 64 bytes, hence a 1-byte
-            // compact prefix — the pallet index sits at b[2] and the call at
-            // b[3]. The argument is a COMPACT u64, not a raw one.
-            //
-            // The previous version looked for 0x03 at b[4]: wrong index (3 is
-            // Grandpa, Timestamp is 1), wrong offset, and it then read the
-            // argument as raw little-endian. It never matched, so this fallback
-            // silently did nothing.
-            if (!timestampMs) {
-                const ts = extrinsics.reduce<number | null>((found, hex) => {
-                    if (found !== null) return found;
-                    try {
-                        const b = fromHex(hex as `0x${string}`);
-                        if (b.length < 5 || b[2] !== TIMESTAMP_PALLET || b[3] !== 0x00) return null;
-                        return decodeCompact(b, 4);
-                    } catch {
-                        return null;
-                    }
-                }, null);
-                if (ts !== null && ts > 0) timestampMs = ts;
-            }
-
-            const author = SubstrateClient.extractAuthorFromLogs(header.digest.logs, ss58Prefix);
+            const timestampMs =
+                (builder && (await this.readTimestamp(builder, blockHash))) ||
+                timestampFromExtrinsics(extrinsics);
+            const author = extractAuthorFromLogs(header.digest.logs, ss58Prefix);
 
             return { header, extrinsics, timestampMs, author };
+        } catch {
+            return null;
+        }
+    }
+
+    /** A block hash as given, or the hash of a block number (number or decimal string). */
+    private async resolveBlockHash(hashOrNumber: string | number): Promise<string | null> {
+        if (typeof hashOrNumber === 'number') return this.getBlockHash(hashOrNumber);
+        return /^\d+$/.test(hashOrNumber)
+            ? this.getBlockHash(parseInt(hashOrNumber, 10))
+            : hashOrNumber;
+    }
+
+    /** `Timestamp.Now` at `blockHash`, or null when the read fails or is empty. */
+    private async readTimestamp(
+        builder: DynamicBuilder,
+        blockHash: string
+    ): Promise<number | null> {
+        try {
+            const store = builder.buildStorage('Timestamp', 'Now');
+            const raw = await this.request<string | null>('state_getStorage', [
+                store.keys.enc(),
+                blockHash,
+            ]);
+            return raw ? Number(store.value.dec(fromHex(raw as `0x${string}`))) : null;
         } catch {
             return null;
         }
@@ -448,200 +376,35 @@ export class SubstrateClient {
             ]);
             if (!raw) return null;
             const decoded = value.dec(fromHex(raw as `0x${string}`));
-            return SubstrateClient._toEventRecords(decoded as unknown[]);
+            return toEventRecords(decoded as unknown[]);
         } catch {
             return null;
         }
     }
 
-    // ─── Internal helpers ─────────────────────────────────────────────────────
+    // ─── Decoders ─────────────────────────────────────────────────────────────
 
     /**
      * The SCALE builder for the runtime at `blockHash`, or for the runtime this
-     * client connected under when omitted. A block must be decoded with its own
-     * runtime's metadata: a call or event whose shape changed in an upgrade
-     * misdecodes, or fails, under any other.
+     * client connected under when omitted. Decode a block with its own runtime:
+     * a call or event whose shape changed in an upgrade misdecodes under another.
      */
-    async getDynamicBuilder(blockHash?: string): Promise<ReturnType<typeof getDynamicBuilder>> {
-        if (blockHash) return (await this.runtimeAt(blockHash)).builder;
-        if (this._dynamicBuilder) return this._dynamicBuilder;
-        const rawMetadata = await this._papi.getMetadata('best');
-        const metadata = decAnyMetadata(rawMetadata);
-        const unified = unifyMetadata(metadata);
-        const lookup = getLookupFn(unified);
-        this._dynamicBuilder = getDynamicBuilder(lookup);
-        return this._dynamicBuilder;
+    async getDynamicBuilder(blockHash?: string): Promise<DynamicBuilder> {
+        return this._decoders.builder(blockHash);
     }
 
     /** The extrinsic decoder for the runtime at `blockHash`; see `getDynamicBuilder`. */
     async getExtrinsicDecoder(blockHash?: string): Promise<ExtrinsicDecoder> {
-        if (blockHash) return (await this.runtimeAt(blockHash)).extrinsic;
-        if (this._extDecoder) return this._extDecoder;
-        const rawMetadata = await this._papi.getMetadata('best');
-        this._extDecoder = getExtrinsicDecoder(rawMetadata);
-        return this._extDecoder;
+        return this._decoders.extrinsic(blockHash);
     }
 
     /**
-     * Decoders for the runtime a block executed under. Over plain RPC rather
-     * than PAPI's chainHead, which only serves pinned (recent) blocks.
-     */
-    private async runtimeAt(blockHash: string): Promise<RuntimeDecoders> {
-        let spec = this._specOfBlock.get(blockHash);
-        if (spec === undefined) {
-            const version = await this.request<RawRuntimeVersion>('state_getRuntimeVersion', [
-                blockHash,
-            ]);
-            spec = version.specVersion;
-            // Reset at the cap; an LRU only if a hot set ever matters.
-            if (this._specOfBlock.size >= SPEC_CACHE_LIMIT) this._specOfBlock.clear();
-            this._specOfBlock.set(blockHash, spec);
-        }
-        let runtime = this._runtimes.get(spec);
-        if (!runtime) {
-            runtime = this.request<string>('state_getMetadata', [blockHash]).then((hex) => {
-                const raw = fromHex(hex as `0x${string}`);
-                const lookup = getLookupFn(unifyMetadata(decAnyMetadata(raw)));
-                return { builder: getDynamicBuilder(lookup), extrinsic: getExtrinsicDecoder(raw) };
-            });
-            const key = spec;
-            // A failed fetch must not stick: the next call retries.
-            runtime.catch(() => this._runtimes.delete(key));
-            this._runtimes.set(spec, runtime);
-        }
-        return runtime;
-    }
-
-    private static _buildDataProxy(value: unknown): EventRecord['event']['data'] {
-        const formatValue = (v: unknown): string => {
-            if (v instanceof Uint8Array) return toHex(v);
-            if (typeof v === 'bigint') return v.toString();
-            return String(v);
-        };
-        const jsonifyValue = (v: unknown): unknown => {
-            if (v === null || v === undefined) return v;
-            if (typeof v === 'bigint') return v.toString();
-            if (v instanceof Uint8Array) return toHex(v);
-            if (Array.isArray(v)) return v.map(jsonifyValue);
-            if (typeof v === 'object') {
-                const obj = v as Record<string, unknown>;
-                // Handle polkadot-api Binary type and similar objects with asHex()
-                if (typeof obj['asHex'] === 'function') {
-                    try {
-                        return (obj['asHex'] as () => string)();
-                    } catch {
-                        /* fall through to generic handling */
-                    }
-                }
-                return Object.fromEntries(
-                    Object.entries(obj)
-                        .filter(([, val]) => typeof val !== 'function')
-                        .map(([k, val]) => [k, jsonifyValue(val)])
-                );
-            }
-            return v;
-        };
-
-        const entries: unknown[] = Array.isArray(value)
-            ? value
-            : value !== null && typeof value === 'object'
-              ? Object.values(value as object)
-              : [value];
-
-        const items = entries.map((v) => ({
-            toString: () => formatValue(v),
-            toJSON: () => jsonifyValue(v),
-            toHuman: () => jsonifyValue(v),
-            ...(v !== null && typeof v === 'object' ? (v as object) : {}),
-        }));
-
-        return Object.assign(items as unknown as EventRecord['event']['data'], {
-            toJSON: () => jsonifyValue(value),
-            toHuman: () => jsonifyValue(value),
-        });
-    }
-
-    /**
-     * Extracts the block author (validator/collator) from raw digest log hex strings.
-     * Looks for a PreRuntime log (tag byte = 6) and decodes the first 32 bytes of the
-     * SCALE-compact payload as an SS58 address using the given prefix.
+     * Extracts the block author (validator/collator) from raw digest log hex
+     * strings: the first 32 bytes of the PreRuntime payload, as an SS58 address.
      *
      * Can be used standalone with raw logs from `chain_getBlock` responses.
      */
     static extractAuthorFromLogs(logs: string[], ss58Prefix: number): string | null {
-        try {
-            for (const hex of logs) {
-                const bytes = fromHex(hex as `0x${string}`);
-                if (bytes.length < 6 || bytes[0] !== 6) continue; // 6 = PreRuntime
-                const firstLenByte = bytes[5] as number;
-                const mode = firstLenByte & 0b11;
-                let payloadStart: number;
-                let payloadLen: number;
-                if (mode === 0) {
-                    payloadLen = firstLenByte >> 2;
-                    payloadStart = 6;
-                } else if (mode === 1) {
-                    if (bytes.length < 7) continue;
-                    payloadLen = (firstLenByte >> 2) | ((bytes[6] as number) << 6);
-                    payloadStart = 7;
-                } else if (mode === 2) {
-                    if (bytes.length < 9) continue;
-                    payloadLen =
-                        ((firstLenByte >> 2) |
-                            ((bytes[6] as number) << 6) |
-                            ((bytes[7] as number) << 14) |
-                            ((bytes[8] as number) << 22)) >>>
-                        0;
-                    payloadStart = 9;
-                } else {
-                    continue;
-                }
-                const payload = bytes.slice(payloadStart, payloadStart + payloadLen);
-                if (payload.length >= 32) {
-                    try {
-                        return AccountId(ss58Prefix).dec(payload.slice(0, 32));
-                    } catch {
-                        return toHex(payload.slice(0, 32));
-                    }
-                }
-            }
-        } catch {
-            /* digest may be empty or malformed */
-        }
-        return null;
-    }
-
-    private static _toEventRecords(decoded: unknown[]): EventRecord[] {
-        return decoded.flatMap((e) => {
-            try {
-                const raw = e as {
-                    phase: { type: string; value?: number };
-                    event: { type: string; value: { type: string; value: unknown } };
-                };
-                const isApply = raw.phase.type === 'ApplyExtrinsic';
-                const extIdx = isApply ? (raw.phase.value as number) : 0;
-                const section = raw.event.type.charAt(0).toLowerCase() + raw.event.type.slice(1);
-                const method = raw.event.value.type;
-
-                const record: EventRecord = {
-                    phase: {
-                        isApplyExtrinsic: isApply,
-                        asApplyExtrinsic: {
-                            eq: (n: number) => n === extIdx,
-                            toString: () => String(extIdx),
-                            toNumber: () => extIdx,
-                        },
-                    },
-                    event: {
-                        section,
-                        method,
-                        data: SubstrateClient._buildDataProxy(raw.event.value.value),
-                    },
-                };
-                return [record];
-            } catch {
-                return [];
-            }
-        });
+        return extractAuthorFromLogs(logs, ss58Prefix);
     }
 }

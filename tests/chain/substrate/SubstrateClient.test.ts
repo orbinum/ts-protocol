@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SubstrateClient } from '../../../src/chain/substrate/SubstrateClient';
+import { buildDataProxy, toEventRecords } from '../../../src/chain/substrate/eventRecords';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -743,15 +744,9 @@ describe('SubstrateClient.getExtrinsicDecoder', () => {
     });
 });
 
-// ─── SubstrateClient._toEventRecords (private static) ────────────────────────
+// ─── toEventRecords ───────────────────────────────────────────────────────────
 
-// Access via type cast to test the conversion logic in isolation.
-const toEventRecords = (d: unknown[]) =>
-    (
-        SubstrateClient as unknown as { _toEventRecords(d: unknown[]): EventRecord[] }
-    )._toEventRecords(d);
-
-describe('SubstrateClient._toEventRecords', () => {
+describe('toEventRecords', () => {
     it('maps ApplyExtrinsic phase correctly', () => {
         const raw = [makeRawEvent('ApplyExtrinsic', 3, 'ShieldedPool', 'Shielded', {})];
         const rec = toEventRecords(raw)[0]!;
@@ -824,14 +819,9 @@ describe('SubstrateClient._toEventRecords', () => {
     });
 });
 
-// ─── SubstrateClient._buildDataProxy (private static) ────────────────────────
+// ─── buildDataProxy ───────────────────────────────────────────────────────────
 
-const buildDataProxy = (v: unknown): EventRecord['event']['data'] =>
-    (
-        SubstrateClient as unknown as { _buildDataProxy(v: unknown): EventRecord['event']['data'] }
-    )._buildDataProxy(v);
-
-describe('SubstrateClient._buildDataProxy', () => {
+describe('buildDataProxy', () => {
     it('wraps an array as an array-like with element accessors', () => {
         const proxy = buildDataProxy([42n, 'hello']);
         expect(proxy.length).toBe(2);

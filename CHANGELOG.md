@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `SubstrateClient` delegates decoding to three modules: `runtimeDecoders`
+  (metadata and decoders per runtime), `eventRecords` (`System.Events` →
+  `EventRecord`) and `blockInfo` (block time and author from raw bytes). The
+  connected runtime's metadata is now fetched once for both decoders (it was
+  fetched by each), and each decoder is built on first use.
+
 ### Fixed
 
 - `assertShieldParams` checks the commitment is 32 bytes of hex, so the pallet

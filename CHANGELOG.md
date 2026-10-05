@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-05
+
+### Changed
+
+- `SubstrateClient` delegates decoding to three modules: `runtimeDecoders`
+  (metadata and decoders per runtime), `eventRecords` (`System.Events` →
+  `EventRecord`) and `blockInfo` (block time and author from raw bytes). The
+  connected runtime's metadata is now fetched once for both decoders (it was
+  fetched by each), and each decoder is built on first use.
+
+### Fixed
+
+- `assertShieldParams` checks the commitment is 32 bytes of hex, so the pallet
+  call refuses what the precompile calldata already did; before, a malformed
+  commitment reached PAPI's codec.
+- **A block decoded with another runtime's metadata.** `getDynamicBuilder` and
+  `getExtrinsicDecoder` cached the metadata seen at connect, so a block from
+  before an upgrade (or after one, in a long-lived session) misdecoded or
+  failed: at spec 17, every earlier `shield`. Both now take an optional
+  `blockHash` and decode with that block's runtime, fetched once per
+  `spec_version`; `queryBlockEvents` passes its hash. Without a hash they keep
+  the runtime the client connected under.
+
 ## [0.7.0] - 2026-10-05
 
 **Breaking** — for runtime spec 17: a shield carries a proof that its note is worth

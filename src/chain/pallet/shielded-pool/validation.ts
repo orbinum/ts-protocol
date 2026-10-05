@@ -6,6 +6,7 @@
  * is a bug in the caller, not hostile input to tolerate.
  */
 import { MemoFormat } from '../../../protocol/memo/index';
+import { isHexOfLength } from '../../../foundation/encoding/hex';
 import type { ClaimRelayFeesParams, ShieldParams } from './extrinsicParams';
 
 const U32_MAX = 0xffff_ffff;
@@ -30,12 +31,15 @@ export function assertClaimRelayFeesParams(params: ClaimRelayFeesParams, where: 
 }
 
 /**
- * `shield(asset_id: u32, amount: u128, commitment, encrypted_memo, proof,
- * circuit_version: u32)`, with a positive amount, a valid memo and a proof.
+ * `shield(asset_id: u32, amount: u128, commitment: [u8; 32], encrypted_memo,
+ * proof, circuit_version: u32)`, with a positive amount, a valid memo and a proof.
  */
 export function assertShieldParams(params: ShieldParams, where: string): void {
     assertU32(params.assetId, `${where}.assetId`);
     assertPositiveU128(params.amount, `${where}.amount`);
+    if (!isHexOfLength(params.commitment, 32)) {
+        throw new Error(`${where}.commitment: expected a 0x-prefixed 32-byte hex string`);
+    }
     MemoFormat.validate(params.encryptedMemo, `${where}.encryptedMemo`);
     if (params.proof.length === 0) {
         throw new Error(`${where}.proof: expected a shield proof, got none`);

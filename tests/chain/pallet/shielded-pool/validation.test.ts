@@ -51,6 +51,8 @@ describe('assertShieldParams', () => {
         ['amount', { amount: 0n }],
         ['amount', { amount: 1n << 128n }],
         ['assetId', { assetId: 2 ** 32 }],
+        ['commitment', { commitment: '0x' + 'ab'.repeat(31) }],
+        ['commitment', { commitment: 'ab'.repeat(32) }],
         ['encryptedMemo', { encryptedMemo: new Uint8Array(10) }],
         ['proof', { proof: new Uint8Array() }],
         ['circuitVersion', { circuitVersion: 2 ** 32 }],

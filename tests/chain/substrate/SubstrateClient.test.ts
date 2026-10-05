@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SubstrateClient } from '../../../src/chain/substrate/SubstrateClient';
+import { buildDataProxy, toEventRecords } from '../../../src/chain/substrate/eventRecords';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -17,6 +18,10 @@ vi.mock('polkadot-api', () => ({
 vi.mock('@polkadot-api/metadata-builders', () => ({
     getDynamicBuilder: vi.fn(),
     getLookupFn: vi.fn(),
+}));
+
+vi.mock('@polkadot-api/tx-utils', () => ({
+    getExtrinsicDecoder: vi.fn().mockReturnValue('ext-decoder'),
 }));
 
 vi.mock('@polkadot-api/substrate-bindings', () => ({
@@ -551,12 +556,22 @@ const FAKE_SCALE_HEX = '0x0000' as `0x${string}`;
 describe('SubstrateClient.queryBlockEvents', () => {
     const BLOCK_HASH = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
 
+    /** The node's RPC for one block: its runtime, its metadata, its events. */
+    function nodeRpc(papi: MockPapi, events: string | null = FAKE_SCALE_HEX, spec = 17) {
+        papi._request.mockImplementation((method: string) => {
+            if (method === 'state_getRuntimeVersion') return Promise.resolve({ specVersion: spec });
+            if (method === 'state_getMetadata') return Promise.resolve('0x6d657461');
+            if (method === 'state_getStorage') return Promise.resolve(events);
+            return Promise.resolve(null);
+        });
+    }
+
     it('returns an array of EventRecord on success', async () => {
         makeBuilderMock([
             makeRawEvent('ApplyExtrinsic', 1, 'ShieldedPool', 'Shielded', { amount: 1000n }),
         ]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(FAKE_SCALE_HEX);
+        nodeRpc(papi);
 
         const result = await client.queryBlockEvents(BLOCK_HASH);
 
@@ -569,7 +584,7 @@ describe('SubstrateClient.queryBlockEvents', () => {
     it('calls state_getStorage with the encoded key and blockHash', async () => {
         const { enc } = makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(FAKE_SCALE_HEX);
+        nodeRpc(papi);
 
         await client.queryBlockEvents(BLOCK_HASH);
 
@@ -582,7 +597,7 @@ describe('SubstrateClient.queryBlockEvents', () => {
     it('calls buildStorage with "System" and "Events"', async () => {
         const { buildStorage } = makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(FAKE_SCALE_HEX);
+        nodeRpc(papi);
 
         await client.queryBlockEvents(BLOCK_HASH);
 
@@ -592,77 +607,105 @@ describe('SubstrateClient.queryBlockEvents', () => {
     it('returns null when state_getStorage returns null', async () => {
         makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(null);
+        nodeRpc(papi, null);
 
-        const result = await client.queryBlockEvents(BLOCK_HASH);
-
-        expect(result).toBeNull();
+        expect(await client.queryBlockEvents(BLOCK_HASH)).toBeNull();
     });
 
-    it('returns null when getMetadata throws', async () => {
+    it('returns null when the metadata cannot be fetched, and retries next time', async () => {
         makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi.getMetadata.mockRejectedValueOnce(new Error('metadata unavailable'));
+        nodeRpc(papi);
+        papi._request.mockImplementationOnce(() => Promise.resolve({ specVersion: 17 }));
+        papi._request.mockImplementationOnce(() => Promise.reject(new Error('unavailable')));
 
-        const result = await client.queryBlockEvents(BLOCK_HASH);
-
-        expect(result).toBeNull();
+        expect(await client.queryBlockEvents(BLOCK_HASH)).toBeNull();
+        expect(await client.queryBlockEvents(BLOCK_HASH)).toEqual([]);
     });
 
     it('returns null when state_getStorage RPC rejects', async () => {
         makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockRejectedValueOnce(new Error('RPC error'));
+        nodeRpc(papi);
+        papi._request.mockImplementation((method: string) =>
+            method === 'state_getStorage'
+                ? Promise.reject(new Error('RPC error'))
+                : Promise.resolve(method === 'state_getRuntimeVersion' ? { specVersion: 17 } : '0x')
+        );
 
-        const result = await client.queryBlockEvents(BLOCK_HASH);
-
-        expect(result).toBeNull();
+        expect(await client.queryBlockEvents(BLOCK_HASH)).toBeNull();
     });
 
     it('returns null when decode throws', async () => {
         const { dec } = makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(FAKE_SCALE_HEX);
+        nodeRpc(papi);
         dec.mockImplementationOnce(() => {
             throw new Error('bad SCALE');
         });
 
-        const result = await client.queryBlockEvents(BLOCK_HASH);
-
-        expect(result).toBeNull();
+        expect(await client.queryBlockEvents(BLOCK_HASH)).toBeNull();
     });
 
     it('returns empty array when decoded block has no events', async () => {
         makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(FAKE_SCALE_HEX);
+        nodeRpc(papi);
 
-        const result = await client.queryBlockEvents(BLOCK_HASH);
-
-        expect(result).toEqual([]);
+        expect(await client.queryBlockEvents(BLOCK_HASH)).toEqual([]);
     });
 
-    it('caches the dynamic builder — getMetadata called only once across multiple calls', async () => {
+    it("decodes with the block's own runtime metadata, not the connected one", async () => {
         makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValue(FAKE_SCALE_HEX);
+        nodeRpc(papi);
 
         await client.queryBlockEvents(BLOCK_HASH);
-        await client.queryBlockEvents(BLOCK_HASH);
-        await client.queryBlockEvents(BLOCK_HASH);
 
-        // getMetadata only called on the first invocation
-        expect(papi.getMetadata).toHaveBeenCalledTimes(1);
+        expect(papi._request).toHaveBeenCalledWith('state_getRuntimeVersion', [BLOCK_HASH]);
+        expect(papi._request).toHaveBeenCalledWith('state_getMetadata', [BLOCK_HASH]);
+        expect(papi.getMetadata).not.toHaveBeenCalled();
     });
 
-    it('fetches metadata with "best" finality', async () => {
+    it('fetches the metadata once per runtime, and the version once per block', async () => {
         makeBuilderMock([]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(FAKE_SCALE_HEX);
+        nodeRpc(papi);
+        const OTHER = '0x' + '11'.repeat(32);
 
         await client.queryBlockEvents(BLOCK_HASH);
+        await client.queryBlockEvents(BLOCK_HASH);
+        await client.queryBlockEvents(OTHER);
 
-        expect(papi.getMetadata).toHaveBeenCalledWith('best');
+        const calls = (m: string) => papi._request.mock.calls.filter(([x]) => x === m).length;
+        expect(calls('state_getRuntimeVersion')).toBe(2);
+        expect(calls('state_getMetadata')).toBe(1);
+    });
+
+    it('fetches the metadata once when two blocks of a new runtime arrive together', async () => {
+        makeBuilderMock([]);
+        const { client, papi } = await makeClient();
+        nodeRpc(papi);
+
+        await Promise.all([
+            client.queryBlockEvents(BLOCK_HASH),
+            client.queryBlockEvents('0x' + '33'.repeat(32)),
+        ]);
+
+        const calls = papi._request.mock.calls.filter(([x]) => x === 'state_getMetadata');
+        expect(calls).toHaveLength(1);
+    });
+
+    it('fetches new metadata for a block under another runtime', async () => {
+        makeBuilderMock([]);
+        const { client, papi } = await makeClient();
+        nodeRpc(papi, FAKE_SCALE_HEX, 16);
+        await client.queryBlockEvents(BLOCK_HASH);
+        nodeRpc(papi, FAKE_SCALE_HEX, 17);
+        await client.queryBlockEvents('0x' + '22'.repeat(32));
+
+        const calls = papi._request.mock.calls.filter(([x]) => x === 'state_getMetadata');
+        expect(calls).toHaveLength(2);
     });
 
     it('decodes multi-event blocks correctly', async () => {
@@ -672,7 +715,7 @@ describe('SubstrateClient.queryBlockEvents', () => {
             makeRawEvent('ApplyExtrinsic', 1, 'System', 'ExtrinsicSuccess', {}),
         ]);
         const { client, papi } = await makeClient();
-        papi._request.mockResolvedValueOnce(FAKE_SCALE_HEX);
+        nodeRpc(papi);
 
         const result = await client.queryBlockEvents(BLOCK_HASH);
 
@@ -682,15 +725,28 @@ describe('SubstrateClient.queryBlockEvents', () => {
     });
 });
 
-// ─── SubstrateClient._toEventRecords (private static) ────────────────────────
+describe('SubstrateClient.getExtrinsicDecoder', () => {
+    it("builds the decoder from the block's runtime when given a hash", async () => {
+        makeBuilderMock([]);
+        const { client, papi } = await makeClient();
+        papi._request.mockImplementation((method: string) =>
+            Promise.resolve(method === 'state_getRuntimeVersion' ? { specVersion: 17 } : '0x6d65')
+        );
 
-// Access via type cast to test the conversion logic in isolation.
-const toEventRecords = (d: unknown[]) =>
-    (
-        SubstrateClient as unknown as { _toEventRecords(d: unknown[]): EventRecord[] }
-    )._toEventRecords(d);
+        expect(await client.getExtrinsicDecoder('0x' + 'ab'.repeat(32))).toBe('ext-decoder');
+        expect(papi.getMetadata).not.toHaveBeenCalled();
+    });
 
-describe('SubstrateClient._toEventRecords', () => {
+    it('keeps the connected runtime without a hash', async () => {
+        const { client, papi } = await makeClient();
+        await client.getExtrinsicDecoder();
+        expect(papi.getMetadata).toHaveBeenCalledWith('best');
+    });
+});
+
+// ─── toEventRecords ───────────────────────────────────────────────────────────
+
+describe('toEventRecords', () => {
     it('maps ApplyExtrinsic phase correctly', () => {
         const raw = [makeRawEvent('ApplyExtrinsic', 3, 'ShieldedPool', 'Shielded', {})];
         const rec = toEventRecords(raw)[0]!;
@@ -763,14 +819,9 @@ describe('SubstrateClient._toEventRecords', () => {
     });
 });
 
-// ─── SubstrateClient._buildDataProxy (private static) ────────────────────────
+// ─── buildDataProxy ───────────────────────────────────────────────────────────
 
-const buildDataProxy = (v: unknown): EventRecord['event']['data'] =>
-    (
-        SubstrateClient as unknown as { _buildDataProxy(v: unknown): EventRecord['event']['data'] }
-    )._buildDataProxy(v);
-
-describe('SubstrateClient._buildDataProxy', () => {
+describe('buildDataProxy', () => {
     it('wraps an array as an array-like with element accessors', () => {
         const proxy = buildDataProxy([42n, 'hello']);
         expect(proxy.length).toBe(2);

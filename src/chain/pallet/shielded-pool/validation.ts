@@ -5,18 +5,40 @@
  * These throw: the parameters are the wallet's own outgoing call, so a bad one
  * is a bug in the caller, not hostile input to tolerate.
  */
-import type { ClaimRelayFeesParams } from './extrinsicParams';
+import { MemoFormat } from '../../../protocol/memo/index';
+import type { ClaimRelayFeesParams, ShieldParams } from './extrinsicParams';
 
 const U32_MAX = 0xffff_ffff;
 const U128_MAX = (1n << 128n) - 1n;
 
+function assertU32(value: number, field: string): void {
+    if (!Number.isInteger(value) || value < 0 || value > U32_MAX) {
+        throw new Error(`${field}: expected a uint32, got ${value}`);
+    }
+}
+
+function assertPositiveU128(value: bigint, field: string): void {
+    if (value <= 0n || value > U128_MAX) {
+        throw new Error(`${field}: expected 1..2^128-1, got ${value}`);
+    }
+}
+
 /** `claim_relay_fees(asset_id: u32, amount: u128)`, with a positive amount. */
 export function assertClaimRelayFeesParams(params: ClaimRelayFeesParams, where: string): void {
-    const { assetId, amount } = params;
-    if (!Number.isInteger(assetId) || assetId < 0 || assetId > U32_MAX) {
-        throw new Error(`${where}.assetId: expected a uint32, got ${assetId}`);
+    assertU32(params.assetId, `${where}.assetId`);
+    assertPositiveU128(params.amount, `${where}.amount`);
+}
+
+/**
+ * `shield(asset_id: u32, amount: u128, commitment, encrypted_memo, proof,
+ * circuit_version: u32)`, with a positive amount, a valid memo and a proof.
+ */
+export function assertShieldParams(params: ShieldParams, where: string): void {
+    assertU32(params.assetId, `${where}.assetId`);
+    assertPositiveU128(params.amount, `${where}.amount`);
+    MemoFormat.validate(params.encryptedMemo, `${where}.encryptedMemo`);
+    if (params.proof.length === 0) {
+        throw new Error(`${where}.proof: expected a shield proof, got none`);
     }
-    if (amount <= 0n || amount > U128_MAX) {
-        throw new Error(`${where}.amount: expected 1..2^128-1, got ${amount}`);
-    }
+    assertU32(params.circuitVersion, `${where}.circuitVersion`);
 }

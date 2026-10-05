@@ -3,12 +3,12 @@ import { CircuitId } from '../../../../src/chain/pallet/zk-verifier/types/circui
 
 /**
  * Anti-drift guard: the SDK's CircuitId constants MUST match the node's
- * `CircuitId` (node/frame/zk-verifier/src/types.rs): TRANSFER=1, UNSHIELD=2.
+ * `CircuitId` (node/frame/zk-verifier/src/types.rs): TRANSFER=1, UNSHIELD=2, SHIELD=3.
  * A wrong id makes getCircuitVersionInfo query a circuit that does not exist.
  */
 describe('CircuitId (SDK ↔ node)', () => {
     it('matches the node circuit ids exactly', () => {
-        expect(CircuitId).toEqual({ Transfer: 1, Unshield: 2 });
+        expect(CircuitId).toEqual({ Transfer: 1, Unshield: 2, Shield: 3 });
     });
 
     // 5 (private_link) and 6 (value_proof) are retired on-chain. Reintroducing

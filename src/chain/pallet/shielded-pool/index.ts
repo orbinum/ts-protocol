@@ -1,4 +1,5 @@
 export { ShieldedPoolModule } from './ShieldedPoolModule';
+export { shieldCallArgs, shieldBatchCallArgs } from './callArgs';
 export {
     extractPalletError,
     isAlreadySpentError,

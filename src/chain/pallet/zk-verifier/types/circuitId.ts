@@ -15,8 +15,10 @@ export type CircuitId = (typeof CircuitId)[keyof typeof CircuitId];
  * |----------|-------|-----------------------------|
  * | Transfer | 1     | 2-in-2-out private transfer |
  * | Unshield | 2     | Withdrawal from the pool    |
+ * | Shield   | 3     | Deposit into the pool       |
  */
 export const CircuitId = {
     Transfer: 1,
     Unshield: 2,
+    Shield: 3,
 } as const;

@@ -176,6 +176,8 @@ export function mapExtrinsicArgs(
                 amount: get(1, 'amount'),
                 commitment: get(2, 'commitment'),
                 encrypted_memo: get(3, 'encrypted_memo'),
+                proof: get(4, 'proof'),
+                circuit_version: get(5, 'circuit_version'),
             };
         }
         if (m_norm === 'shieldbatch') {
@@ -189,6 +191,8 @@ export function mapExtrinsicArgs(
                                 amount: op[1],
                                 commitment: op[2],
                                 encrypted_memo: op[3],
+                                proof: op[4],
+                                circuit_version: op[5],
                             };
                         }
                         return op;

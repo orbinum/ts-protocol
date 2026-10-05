@@ -65,7 +65,7 @@ export class ShieldedPoolPrecompile {
      * address as origin, so funds flow caller → precompile → pool. That avoids
      * a double deduction while keeping the displayed amount accurate.
      *
-     * Extrinsic: `shieldedPool.shield(assetId, amount, commitment, encryptedMemo)`
+     * Extrinsic: `shieldedPool.shield(assetId, amount, commitment, encryptedMemo, proof, circuitVersion)`
      */
     async shield(params: ShieldParams, signer: EvmSigner): Promise<string> {
         return signer({

@@ -6,9 +6,12 @@
  */
 
 import { toHex } from '../../../foundation/encoding/hex';
-import { KNOWN_PRECOMPILES } from './addresses';
+import { KNOWN_PRECOMPILES, SP_SEL } from './addresses';
 import { fromHex } from '../../../foundation/encoding/hex';
 import { decodeUint } from './abi';
+
+/** The current shield selector; the pre-proof one carries no `circuit_version`. */
+const SHIELD_SELECTOR = toHex(SP_SEL.SHIELD).slice(2);
 
 /**
  * Which shielded-pool operation a precompile call performs.
@@ -79,9 +82,11 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
     const fnSig = info.functions[selector];
     if (!fnSig) return null;
 
-    // shield(uint32,bytes32,bytes)  — payable, amount = msg.value (NOT in calldata)
+    // shield(uint32,bytes32,bytes,bytes,uint32)  — payable, amount = msg.value (NOT in calldata)
     // ABI head after selector:
     // [0-31] assetId | [32-63] commitment (bytes32) | [64-95] offset→memo
+    // [96-127] offset→proof | [128-159] circuit_version
+    // The pre-proof shield(uint32,bytes32,bytes) shares the first three slots.
     if (fnSig.startsWith('shield(')) {
         try {
             const data = fromHex(input.slice(10));
@@ -89,7 +94,11 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
             const assetId = decodeUint(data, 0);
             const commitment = toHex(data.slice(32, 64));
             // amount is msg.value — not present in calldata
-            return { fnSig, method: methodOf(fnSig), args: { assetId, commitment } };
+            const args: Record<string, unknown> = { assetId, commitment };
+            if (selector === SHIELD_SELECTOR && hasFullHead(data, 5)) {
+                args['circuitVersion'] = decodeUint(data, 128);
+            }
+            return { fnSig, method: methodOf(fnSig), args };
         } catch {
             return { fnSig, method: methodOf(fnSig), args: {} };
         }

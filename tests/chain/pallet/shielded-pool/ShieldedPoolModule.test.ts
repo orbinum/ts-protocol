@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { ShieldedPoolModule } from '../../../../src/chain/pallet/shielded-pool/ShieldedPoolModule';
 import type { SubstrateClient } from '../../../../src/chain/substrate/SubstrateClient';
 
+/** A stand-in shield proof: the calls carry it, nothing here verifies it. */
+const SHIELD_PROOF = new Uint8Array(128).fill(1);
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const FINALIZED_OK: unknown = {
@@ -46,6 +49,8 @@ const SHIELD_PARAMS = {
     amount: 1000n,
     commitment: '0x' + 'ab'.repeat(32),
     encryptedMemo: new Uint8Array(180),
+    proof: SHIELD_PROOF,
+    circuitVersion: 1,
 };
 
 const UNSHIELD_PARAMS = {
@@ -102,6 +107,16 @@ describe('ShieldedPoolModule.shield', () => {
         const mod = new ShieldedPoolModule(client);
         await mod.shield(SHIELD_PARAMS, mockSigner);
         expect(client._txEntry).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the shield proof and its circuit version', async () => {
+        const client = txClient('shield');
+        const mod = new ShieldedPoolModule(client);
+        await mod.shield(SHIELD_PARAMS, mockSigner);
+        const [args] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
+        expect(args['proof']).toBe(SHIELD_PROOF);
+        expect(args['circuit_version']).toBe(1);
+        expect(args['amount']).toBe(SHIELD_PARAMS.amount);
     });
 
     it('returns error info when tx fails', async () => {
@@ -242,6 +257,8 @@ const BATCH_ITEM_A = {
     amount: 100n,
     commitment: '0x' + 'ab'.repeat(32),
     encryptedMemo: new Uint8Array(180),
+    proof: SHIELD_PROOF,
+    circuitVersion: 1,
 };
 
 const BATCH_ITEM_B = {
@@ -249,6 +266,8 @@ const BATCH_ITEM_B = {
     amount: 200n,
     commitment: '0x' + 'cd'.repeat(32),
     encryptedMemo: new Uint8Array(180),
+    proof: SHIELD_PROOF,
+    circuitVersion: 1,
 };
 
 describe('ShieldedPoolModule.shieldBatch', () => {
@@ -274,21 +293,37 @@ describe('ShieldedPoolModule.shieldBatch', () => {
         expect(client._signAndSubmit).toHaveBeenCalledWith(mockSigner);
     });
 
-    it('passes the correct number of operations to the tx entry', async () => {
+    it('passes the operations under the call argument name', async () => {
         const client = txClient('shield_batch');
         const mod = new ShieldedPoolModule(client);
         await mod.shieldBatch({ items: [BATCH_ITEM_A, BATCH_ITEM_B] }, mockSigner);
-        const [ops] = client._txEntry.mock.calls[0] as [unknown[]];
-        expect(ops).toHaveLength(2);
+        const [args] = client._txEntry.mock.calls[0] as [{ operations: unknown[] }];
+        expect(args.operations).toHaveLength(2);
     });
 
-    it('converts amount to string for SCALE encoding', async () => {
+    it('passes each operation as a tuple in the call argument order', async () => {
         const client = txClient('shield_batch');
         const mod = new ShieldedPoolModule(client);
         await mod.shieldBatch({ items: [BATCH_ITEM_A] }, mockSigner);
-        const [ops] = client._txEntry.mock.calls[0] as [Array<{ amount: unknown }>];
-        expect(typeof ops[0]!.amount).toBe('string');
-        expect(ops[0]!.amount).toBe('100');
+        const [args] = client._txEntry.mock.calls[0] as [{ operations: unknown[][] }];
+        expect(args.operations[0]).toEqual([
+            0,
+            100n,
+            BATCH_ITEM_A.commitment,
+            BATCH_ITEM_A.encryptedMemo,
+            SHIELD_PROOF,
+            1,
+        ]);
+    });
+
+    it('refuses an item without a proof, naming it, before building the call', async () => {
+        const client = txClient('shield_batch');
+        const mod = new ShieldedPoolModule(client);
+        const items = [BATCH_ITEM_A, { ...BATCH_ITEM_B, proof: new Uint8Array() }];
+        await expect(mod.shieldBatch({ items }, mockSigner)).rejects.toThrow(
+            'shieldBatch.items[1].proof'
+        );
+        expect(client._txEntry).not.toHaveBeenCalled();
     });
 
     it('returns error info when tx fails', async () => {

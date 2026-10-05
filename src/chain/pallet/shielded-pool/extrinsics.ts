@@ -34,6 +34,10 @@ export type ShieldOperation = {
     commitment: Bytes32;
     /** Encrypted memo bytes — exactly 180 bytes. */
     encryptedMemo: number[];
+    /** Shield proof. Absent from shields before spec 17. */
+    proof?: number[];
+    /** Shield circuit version. Absent from shields before spec 17. */
+    circuitVersion?: number;
 };
 
 // ─── Extrinsic argument types ─────────────────────────────────────────────────
@@ -49,6 +53,10 @@ export type ShieldArgs = {
     commitment: Bytes32;
     /** Encrypted memo — exactly 180 bytes. */
     encryptedMemo: number[];
+    /** Shield proof. Absent from shields before spec 17. */
+    proof?: number[];
+    /** Shield circuit version. Absent from shields before spec 17. */
+    circuitVersion?: number;
 };
 
 /**

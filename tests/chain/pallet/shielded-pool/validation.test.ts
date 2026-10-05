@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { assertClaimRelayFeesParams } from '../../../../src/chain/pallet/shielded-pool/validation';
+import {
+    assertClaimRelayFeesParams,
+    assertShieldParams,
+} from '../../../../src/chain/pallet/shielded-pool/validation';
 
 /** `claim_relay_fees(asset_id: u32, amount: u128)`; both call paths use this check. */
 describe('assertClaimRelayFeesParams', () => {
@@ -26,5 +29,35 @@ describe('assertClaimRelayFeesParams', () => {
                 'claim.assetId'
             );
         }
+    });
+});
+
+/** `shield`; the pallet call, the batch and the precompile calldata use this check. */
+describe('assertShieldParams', () => {
+    const valid = {
+        assetId: 0,
+        amount: 1n,
+        commitment: '0x' + 'ab'.repeat(32),
+        encryptedMemo: new Uint8Array(180),
+        proof: new Uint8Array(128),
+        circuitVersion: 1,
+    };
+
+    it('accepts a deposit with a memo and a proof', () => {
+        expect(() => assertShieldParams(valid, 'shield')).not.toThrow();
+    });
+
+    it.each([
+        ['amount', { amount: 0n }],
+        ['amount', { amount: 1n << 128n }],
+        ['assetId', { assetId: 2 ** 32 }],
+        ['encryptedMemo', { encryptedMemo: new Uint8Array(10) }],
+        ['proof', { proof: new Uint8Array() }],
+        ['circuitVersion', { circuitVersion: 2 ** 32 }],
+        ['circuitVersion', { circuitVersion: 1.5 }],
+    ])('refuses a bad %s', (field, over) => {
+        expect(() => assertShieldParams({ ...valid, ...over }, 'shield')).toThrow(
+            `shield.${field}`
+        );
     });
 });

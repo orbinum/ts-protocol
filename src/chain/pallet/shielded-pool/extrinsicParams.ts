@@ -20,6 +20,10 @@ export type ShieldParams = {
     commitment: string;
     /** Encrypted memo bytes (180 bytes). Required — notes without valid memos are irrecoverable. */
     encryptedMemo: Uint8Array;
+    /** Shield proof: the commitment opens to `amount` of `assetId` (circuit 3). */
+    proof: Uint8Array;
+    /** Shield circuit version the proof was built for. */
+    circuitVersion: number;
 };
 
 /**
@@ -104,17 +108,8 @@ export type PrivateTransferParams = {
     circuitVersion: number;
 };
 
-/** Parameters for a single item in a shield_batch extrinsic. */
-export type ShieldBatchItem = {
-    /** Asset ID being deposited. */
-    assetId: number;
-    /** Amount to deposit in planck. */
-    amount: bigint;
-    /** 0x-prefixed 32-byte commitment hex */
-    commitment: string;
-    /** Encrypted memo bytes (180 bytes). Required — notes without valid memos are irrecoverable. */
-    encryptedMemo: Uint8Array;
-};
+/** Parameters for a single item in a shield_batch extrinsic: one `shield`'s arguments. */
+export type ShieldBatchItem = ShieldParams;
 
 /** Parameters for shieldedPool.shieldBatch — deposits up to 20 notes in one extrinsic. */
 export type ShieldBatchParams = {

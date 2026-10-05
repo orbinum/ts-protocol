@@ -18,6 +18,7 @@ import type {
     ClaimRelayFeesParams,
 } from './extrinsicParams';
 import { assertClaimRelayFeesParams } from './validation';
+import { shieldBatchCallArgs, shieldCallArgs } from './callArgs';
 
 // ─── ShieldedPoolModule ───────────────────────────────────────────────────────
 
@@ -39,24 +40,19 @@ export class ShieldedPoolModule {
 
     /**
      * Deposits tokens into the shielded pool.
-     * Extrinsic: shieldedPool.shield(assetId, amount, commitment, encryptedMemo)
+     * Extrinsic: shieldedPool.shield(assetId, amount, commitment, encryptedMemo, proof, circuitVersion)
      *
      * Shield is always a signed (public) transaction — the caller's address
-     * appears on-chain as the depositor.
+     * appears on-chain as the depositor. The proof binds the commitment to the
+     * deposited amount and asset.
      */
     async shield(
         params: ShieldParams,
         signer: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
-        MemoFormat.validate(params.encryptedMemo, 'shield.encryptedMemo');
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'shield');
-        const tx = callUnsafeTx(entry, {
-            asset_id: params.assetId,
-            amount: params.amount,
-            commitment: params.commitment,
-            encrypted_memo: params.encryptedMemo,
-        });
+        const tx = callUnsafeTx(entry, shieldCallArgs(params));
         return signAndSubmitTx(tx, signer, options);
     }
 
@@ -157,17 +153,8 @@ export class ShieldedPoolModule {
         signer: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
-        const operations = params.items.map((item, i) => {
-            MemoFormat.validate(item.encryptedMemo, `shieldBatch.items[${i}].encryptedMemo`);
-            return {
-                assetId: item.assetId,
-                amount: item.amount.toString(),
-                commitment: item.commitment,
-                encryptedMemo: item.encryptedMemo,
-            };
-        });
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'shield_batch');
-        const tx = callUnsafeTx(entry, operations);
+        const tx = callUnsafeTx(entry, shieldBatchCallArgs(params));
         return signAndSubmitTx(tx, signer, options);
     }
 

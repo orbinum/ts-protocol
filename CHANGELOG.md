@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-05
+
+**Breaking** — for runtime spec 17: a shield carries a proof that its note is worth
+exactly the deposit.
+
+### Changed
+
+- **`ShieldParams`** gains `proof: Uint8Array` and `circuitVersion: number`, and
+  `ShieldBatchItem` is now `ShieldParams`. `ShieldedPoolModule.shield` and
+  `shieldBatch` pass both.
+- **Precompile shield** is `shield(uint32,bytes32,bytes,bytes,uint32)` —
+  `SP_SEL.SHIELD` = `0xf25897e0` (was `0x9feb22ea`). `buildShieldCalldata` and
+  `estimateShieldGas` encode the proof and version.
+- `decodePrecompileCalldata` reads both shield ABIs and adds `circuitVersion` for
+  the new one; the pre-proof selector stays in its table so history still
+  decodes. The extrinsic mapper adds `proof` and `circuit_version` to shield and
+  `shield_batch` entries (absent before spec 17).
+- Every shield path — `shield`, `shieldBatch` and `buildShieldCalldata` —
+  refuses before building the call an asset past `u32`, an amount outside
+  `1..u128`, a malformed memo, an empty proof or a circuit version past `u32`,
+  naming the field (`shieldBatch.items[1].proof`).
+
+### Added
+
+- **`shieldCallArgs(params)` / `shieldBatchCallArgs(params)`**: the arguments
+  `ShieldedPoolModule` submits, validated, for a host that submits through its
+  own PAPI flow — so it encodes what the module does instead of a copy.
+- `CircuitId.Shield` (3).
+- `AssetNotSupported` classified as an `asset` error: the pool moves only the
+  native asset.
+
+### Fixed
+
+- **A failed signed call lost its error name.** `TxResult.error` read
+  `Module(ShieldedPool)`, so `classifyChainError` saw no name and every on-chain
+  rejection classified as `unknown`. It is now `Module(<Pallet>.<Error>)`, and
+  `extractPalletError` reads that form.
+- **`shieldBatch` never encoded.** It passed the operations as a bare array of
+  objects with a string `amount`; the call takes `{ operations }` of tuples with a
+  `u128`. Each entry is now a tuple in argument order.
+
+### Security
+
+- `pnpm audit` is clean: `pnpm.overrides` lift `deepmerge-ts` and `esbuild`,
+  both reached only through the `polkadot-api` CLI, a dev dependency.
+
 ## [0.6.0] - 2026-09-28
 
 **Breaking** — for runtime spec 16, with every compatibility shim removed:

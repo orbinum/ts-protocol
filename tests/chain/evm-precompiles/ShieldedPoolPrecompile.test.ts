@@ -12,6 +12,9 @@ import type {
     ClaimRelayFeesParams,
 } from '../../../src/chain/pallet/shielded-pool/extrinsicParams';
 
+/** A stand-in shield proof: the calls carry it, nothing here verifies it. */
+const SHIELD_PROOF = new Uint8Array(128).fill(1);
+
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
 
 function mockEvm(): EvmClient {
@@ -34,6 +37,8 @@ const SHIELD_PARAMS: ShieldParams = {
     amount: 1_000_000n,
     commitment: COMMITMENT,
     encryptedMemo: new Uint8Array(180),
+    proof: SHIELD_PROOF,
+    circuitVersion: 1,
 };
 
 const UNSHIELD_PARAMS: UnshieldParams = {

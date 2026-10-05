@@ -22,7 +22,10 @@ import type {
     PrivateTransferParams,
     ClaimRelayFeesParams,
 } from '../../pallet/shielded-pool/extrinsicParams';
-import { assertClaimRelayFeesParams } from '../../pallet/shielded-pool/validation';
+import {
+    assertClaimRelayFeesParams,
+    assertShieldParams,
+} from '../../pallet/shielded-pool/validation';
 import { MemoFormat } from '../../../protocol/memo/index';
 import { fromHex, isHexOfLength } from '../../../foundation/encoding/hex';
 import { encodeHex } from './abi';
@@ -76,20 +79,23 @@ function accountId32(address: string, field: string): Uint8Array {
 // ─── Builders ────────────────────────────────────────────────────────────────
 
 /**
- * Calldata for `shield(uint32, bytes32, bytes)`.
+ * Calldata for `shield(uint32, bytes32, bytes, bytes, uint32)`.
  *
  * The token amount is NOT here: it rides as `msg.value` on the transaction, so
- * EVM wallets show the user the amount they are actually sending.
+ * EVM wallets show the user the amount they are actually sending. The proof
+ * binds the commitment to that amount.
  */
 export function buildShieldCalldata(params: ShieldParams): string {
-    MemoFormat.validate(params.encryptedMemo, 'buildShieldCalldata.encryptedMemo');
+    assertShieldParams(params, 'buildShieldCalldata');
     const commitment = bytes32(params.commitment, 'buildShieldCalldata.commitment');
 
     return encodeHex(
         SP_SEL.SHIELD,
         { type: 'uint', value: uint32(params.assetId, 'buildShieldCalldata.assetId') },
         { type: 'bytes32', value: commitment },
-        { type: 'bytes', value: params.encryptedMemo }
+        { type: 'bytes', value: params.encryptedMemo },
+        { type: 'bytes', value: params.proof },
+        { type: 'uint', value: uint32(params.circuitVersion, 'buildShieldCalldata.circuitVersion') }
     );
 }
 
@@ -182,7 +188,7 @@ export function buildClaimRelayFeesCalldata(params: ClaimRelayFeesParams): strin
     assertClaimRelayFeesParams(params, 'buildClaimRelayFeesCalldata');
     return encodeHex(
         SP_SEL.CLAIM_RELAY_FEES,
-        { type: 'uint', value: BigInt(params.assetId) },
+        { type: 'uint', value: uint32(params.assetId, 'buildShieldCalldata.assetId') },
         { type: 'uint', value: params.amount }
     );
 }

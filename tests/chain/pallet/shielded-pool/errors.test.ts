@@ -22,6 +22,15 @@ describe('extractPalletError', () => {
         );
     });
 
+    it("reads a signed extrinsic's TxResult error", () => {
+        expect(extractPalletError('Module(ShieldedPool.ProofVerificationFailed)')).toBe(
+            'ProofVerificationFailed'
+        );
+        expect(classifyChainError('Module(ShieldedPool.NullifierAlreadyUsed)')).toBe(
+            'already-spent'
+        );
+    });
+
     it('reads the backslash-escaped form the EVM path nests in eth_call', () => {
         expect(extractPalletError('execution reverted: message: Some(\\"InvalidAmount\\")')).toBe(
             'InvalidAmount'
@@ -101,6 +110,7 @@ describe('palletErrorKind', () => {
         ['FeeRecipientUnavailable', 'shape'],
         ['InvalidProof', 'proof'],
         ['AssetNotVerified', 'asset'],
+        ['AssetNotSupported', 'asset'],
         ['InvalidMemoSize', 'shape'],
         ['MerkleTreeFull', 'capacity'],
         ['InsufficientBalance', 'balance'],

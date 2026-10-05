@@ -15,10 +15,15 @@
  * The pallet error name inside a raw chain error, or null.
  *
  * Accepts both quote forms — plain from Substrate, backslash-escaped from the
- * EVM path's nested eth_call message.
+ * EVM path's nested eth_call message — and a signed extrinsic's
+ * `TxResult.error`, `Module(<Pallet>.<Error>)`.
  */
 export function extractPalletError(raw: string): string | null {
-    return raw.match(/message: Some\(\\?"([^"\\]+)\\?"\)/)?.[1] ?? null;
+    return (
+        raw.match(/message: Some\(\\?"([^"\\]+)\\?"\)/)?.[1] ??
+        raw.match(/Module\(\w+\.(\w+)\)/)?.[1] ??
+        null
+    );
 }
 
 /**
@@ -90,6 +95,7 @@ const ERROR_KINDS: Readonly<Record<string, PalletErrorKind>> = {
     // Assets
     InvalidAssetId: 'asset',
     AssetNotVerified: 'asset',
+    AssetNotSupported: 'asset',
     AssetIdMismatch: 'asset',
     AssetIdAlreadyExists: 'asset',
 

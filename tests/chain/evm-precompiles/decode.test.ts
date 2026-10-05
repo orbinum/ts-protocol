@@ -4,6 +4,9 @@ import { ShieldedPoolPrecompile } from '../../../src/chain/evm/precompiles/Shiel
 import { PRECOMPILE_ADDR } from '../../../src/chain/evm/precompiles/addresses';
 import type { EvmClient } from '../../../src/chain/evm/EvmClient';
 
+/** A stand-in shield proof: the calls carry it, nothing here verifies it. */
+const SHIELD_PROOF = new Uint8Array(128).fill(1);
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const SP_ADDR = PRECOMPILE_ADDR.SHIELDED_POOL;
@@ -45,6 +48,8 @@ describe('decodePrecompileCalldata — null cases', () => {
             amount: 1n,
             commitment: COMMITMENT,
             encryptedMemo: new Uint8Array(180),
+            proof: SHIELD_PROOF,
+            circuitVersion: 1,
         });
         const upper = SP_ADDR.toUpperCase();
         const result = decodePrecompileCalldata(upper, calldata);
@@ -65,9 +70,36 @@ describe('decodePrecompileCalldata — shield', () => {
             amount: 1_000n,
             commitment: COMMITMENT,
             encryptedMemo: new Uint8Array(180),
+            proof: SHIELD_PROOF,
+            circuitVersion: 1,
         });
         const result = decodePrecompileCalldata(SP_ADDR, calldata);
+        expect(result?.fnSig).toBe('shield(uint32,bytes32,bytes,bytes,uint32)');
+        expect(calldata.slice(0, 10)).toBe('0xf25897e0');
+    });
+
+    it('decodes the circuit version', () => {
+        const calldata = sp.buildShieldCalldata({
+            assetId: 0,
+            amount: 1n,
+            commitment: COMMITMENT,
+            encryptedMemo: new Uint8Array(180),
+            proof: SHIELD_PROOF,
+            circuitVersion: 4,
+        });
+        expect(decodePrecompileCalldata(SP_ADDR, calldata)?.args['circuitVersion']).toBe(4n);
+    });
+
+    // Every deposit before spec 17 used this calldata; history must still decode.
+    it('decodes a pre-proof shield(uint32,bytes32,bytes) from history', () => {
+        const word = (n: number) => n.toString(16).padStart(64, '0');
+        const legacy =
+            '0x9feb22ea' + word(7) + 'aa'.repeat(32) + word(96) + word(180) + '00'.repeat(192);
+        const result = decodePrecompileCalldata(SP_ADDR, legacy);
         expect(result?.fnSig).toBe('shield(uint32,bytes32,bytes)');
+        expect(result?.args['assetId']).toBe(7n);
+        expect(result?.args['commitment']).toBe(COMMITMENT);
+        expect(result?.args['circuitVersion']).toBeUndefined();
     });
 
     it('round-trips assetId', () => {
@@ -76,6 +108,8 @@ describe('decodePrecompileCalldata — shield', () => {
             amount: 1n,
             commitment: COMMITMENT,
             encryptedMemo: new Uint8Array(180),
+            proof: SHIELD_PROOF,
+            circuitVersion: 1,
         });
         const result = decodePrecompileCalldata(SP_ADDR, calldata);
         expect(result?.args['assetId']).toBe(7n);
@@ -87,6 +121,8 @@ describe('decodePrecompileCalldata — shield', () => {
             amount: 1_000_000_000_000_000_000n,
             commitment: COMMITMENT,
             encryptedMemo: new Uint8Array(180),
+            proof: SHIELD_PROOF,
+            circuitVersion: 1,
         });
         const result = decodePrecompileCalldata(SP_ADDR, calldata);
         expect(result?.args['amount']).toBeUndefined();
@@ -98,6 +134,8 @@ describe('decodePrecompileCalldata — shield', () => {
             amount: 1n,
             commitment: COMMITMENT,
             encryptedMemo: new Uint8Array(180),
+            proof: SHIELD_PROOF,
+            circuitVersion: 1,
         });
         const result = decodePrecompileCalldata(SP_ADDR, calldata);
         expect(typeof result?.args['commitment']).toBe('string');
@@ -286,6 +324,8 @@ describe('decodePrecompileCalldata — method', () => {
             amount: 1_000n,
             commitment: COMMITMENT,
             encryptedMemo: new Uint8Array(180),
+            proof: SHIELD_PROOF,
+            circuitVersion: 1,
         });
         expect(decodePrecompileCalldata(SP_ADDR, calldata)?.method).toBe('shield');
     });

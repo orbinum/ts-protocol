@@ -34,9 +34,12 @@ export type SubmitOptions = UnsafeTxOptions & {
  */
 function formatDispatchError(err: { type: string; value: unknown }): string {
     if (err.type === 'Module') {
-        const inner = err.value as { type?: string; value?: unknown } | undefined;
-        if (inner?.type) {
-            return `Module(${inner.type})`;
+        // `{ type: <pallet>, value: { type: <error> } }`: keep both, since the
+        // error name is what a wallet classifies on (`classifyChainError`).
+        const pallet = err.value as { type?: string; value?: { type?: string } } | undefined;
+        if (pallet?.type) {
+            const name = pallet.value?.type;
+            return name ? `Module(${pallet.type}.${name})` : `Module(${pallet.type})`;
         }
     }
     // Fallback: serialize whatever we have for maximum debuggability

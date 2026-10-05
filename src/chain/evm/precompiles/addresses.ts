@@ -31,8 +31,8 @@ export const PRECOMPILE_ADDR = {
 
 /** Function selectors for `ShieldedPoolPrecompile`. */
 export const SP_SEL = {
-    // shield(uint32,bytes32,bytes)                                               → 0x9feb22ea  (payable, amount = msg.value)
-    SHIELD: new Uint8Array([0x9f, 0xeb, 0x22, 0xea]),
+    // shield(uint32,bytes32,bytes,bytes,uint32)                                  → 0xf25897e0  (payable, amount = msg.value)
+    SHIELD: new Uint8Array([0xf2, 0x58, 0x97, 0xe0]),
     // privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32)  → 0x66ed2cd4
     PRIVATE_TRANSFER: new Uint8Array([0x66, 0xed, 0x2c, 0xd4]),
     // unshield(bytes,bytes32,bytes32,uint32,uint256,bytes32,uint256,bytes32,bytes,uint32)  → 0x4e505348
@@ -68,6 +68,7 @@ export const KNOWN_PRECOMPILES: Record<string, KnownPrecompileInfo> = {
     '0x0000000000000000000000000000000000000801': {
         name: 'ShieldedPool',
         functions: {
+            f25897e0: 'shield(uint32,bytes32,bytes,bytes,uint32)',
             '9feb22ea': 'shield(uint32,bytes32,bytes)',
             '66ed2cd4':
                 'privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32)',

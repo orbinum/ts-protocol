@@ -51,6 +51,11 @@ function decodeCompact(bytes: Uint8Array, offset: number): number | null {
 export type DynamicBuilder = ReturnType<typeof getDynamicBuilder>;
 export type ExtrinsicDecoder = ReturnType<typeof getExtrinsicDecoder>;
 
+type RuntimeDecoders = { builder: DynamicBuilder; extrinsic: ExtrinsicDecoder };
+
+/** Block hashes whose `spec_version` is remembered before the map is reset. */
+const SPEC_CACHE_LIMIT = 4096;
+
 /**
  * Thin wrapper over polkadot-api (PAPI) that provides:
  * - Raw JSON-RPC calls (custom Orbinum RPCs)
@@ -77,6 +82,10 @@ export class SubstrateClient {
 
     private _dynamicBuilder: ReturnType<typeof getDynamicBuilder> | null = null;
     private _extDecoder: ExtrinsicDecoder | null = null;
+    /** Decoders per runtime, by `spec_version`: one metadata fetch per runtime. */
+    private readonly _runtimes = new Map<number, Promise<RuntimeDecoders>>();
+    /** `spec_version` per block hash. A hash never changes runtime. */
+    private readonly _specOfBlock = new Map<string, number>();
     private _inflightTxCount = 0;
 
     /**
@@ -431,7 +440,7 @@ export class SubstrateClient {
      */
     async queryBlockEvents(blockHash: string): Promise<EventRecord[] | null> {
         try {
-            const builder = await this.getDynamicBuilder();
+            const builder = await this.getDynamicBuilder(blockHash);
             const { keys, value } = builder.buildStorage('System', 'Events');
             const raw = await this.request<string | null>('state_getStorage', [
                 keys.enc(),
@@ -447,7 +456,14 @@ export class SubstrateClient {
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
 
-    async getDynamicBuilder(): Promise<ReturnType<typeof getDynamicBuilder>> {
+    /**
+     * The SCALE builder for the runtime at `blockHash`, or for the runtime this
+     * client connected under when omitted. A block must be decoded with its own
+     * runtime's metadata: a call or event whose shape changed in an upgrade
+     * misdecodes, or fails, under any other.
+     */
+    async getDynamicBuilder(blockHash?: string): Promise<ReturnType<typeof getDynamicBuilder>> {
+        if (blockHash) return (await this.runtimeAt(blockHash)).builder;
         if (this._dynamicBuilder) return this._dynamicBuilder;
         const rawMetadata = await this._papi.getMetadata('best');
         const metadata = decAnyMetadata(rawMetadata);
@@ -457,11 +473,43 @@ export class SubstrateClient {
         return this._dynamicBuilder;
     }
 
-    async getExtrinsicDecoder(): Promise<ExtrinsicDecoder> {
+    /** The extrinsic decoder for the runtime at `blockHash`; see `getDynamicBuilder`. */
+    async getExtrinsicDecoder(blockHash?: string): Promise<ExtrinsicDecoder> {
+        if (blockHash) return (await this.runtimeAt(blockHash)).extrinsic;
         if (this._extDecoder) return this._extDecoder;
         const rawMetadata = await this._papi.getMetadata('best');
         this._extDecoder = getExtrinsicDecoder(rawMetadata);
         return this._extDecoder;
+    }
+
+    /**
+     * Decoders for the runtime a block executed under. Over plain RPC rather
+     * than PAPI's chainHead, which only serves pinned (recent) blocks.
+     */
+    private async runtimeAt(blockHash: string): Promise<RuntimeDecoders> {
+        let spec = this._specOfBlock.get(blockHash);
+        if (spec === undefined) {
+            const version = await this.request<RawRuntimeVersion>('state_getRuntimeVersion', [
+                blockHash,
+            ]);
+            spec = version.specVersion;
+            // Reset at the cap; an LRU only if a hot set ever matters.
+            if (this._specOfBlock.size >= SPEC_CACHE_LIMIT) this._specOfBlock.clear();
+            this._specOfBlock.set(blockHash, spec);
+        }
+        let runtime = this._runtimes.get(spec);
+        if (!runtime) {
+            runtime = this.request<string>('state_getMetadata', [blockHash]).then((hex) => {
+                const raw = fromHex(hex as `0x${string}`);
+                const lookup = getLookupFn(unifyMetadata(decAnyMetadata(raw)));
+                return { builder: getDynamicBuilder(lookup), extrinsic: getExtrinsicDecoder(raw) };
+            });
+            const key = spec;
+            // A failed fetch must not stick: the next call retries.
+            runtime.catch(() => this._runtimes.delete(key));
+            this._runtimes.set(spec, runtime);
+        }
+        return runtime;
     }
 
     private static _buildDataProxy(value: unknown): EventRecord['event']['data'] {

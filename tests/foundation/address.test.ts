@@ -356,9 +356,21 @@ describe('addressToFieldElement', () => {
         expect(addressToFieldElement(original, 2)).not.toBe(addressToFieldElement(alias, 2));
     });
 
+    // Unshield v3 keeps v2's memo-bound layout (`encode_unshield`): only the
+    // spending-key rule changed, so the recipient must encode identically.
+    it('encodes the recipient for circuit v3 exactly as v2', () => {
+        for (const account of [
+            '0x' + '01'.repeat(32),
+            '0x' + 'ff'.repeat(32),
+            '0x' + 'ab'.repeat(20),
+        ]) {
+            expect(addressToFieldElement(account, 3)).toBe(addressToFieldElement(account, 2));
+        }
+    });
+
     it('refuses a circuit version without a known recipient rule', () => {
         const account = '0x' + '01'.repeat(32);
-        for (const version of [0, 3, 1.5]) {
+        for (const version of [0, 4, 1.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
             expect(() => addressToFieldElement(account, version)).toThrow(/circuit version/);
         }
     });

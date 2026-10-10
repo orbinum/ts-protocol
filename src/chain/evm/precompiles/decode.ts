@@ -53,6 +53,31 @@ function methodOf(fnSig: string): PrecompileMethod | null {
     return null;
 }
 
+/** Bytes of `privateTransfer`'s ABI head: eight 32-byte slots. */
+const PRIVATE_TRANSFER_HEAD = 8 * 32;
+
+/**
+ * The `bytes32[]` of roots whose offset sits in head slot 1, or `[]` when it
+ * cannot be read honestly. Offset and count come from the calldata, so both are
+ * bounds-checked before anything is read:
+ *
+ * - the offset must point past the head (an offset into it would read the
+ *   head's own words as roots) and inside the data;
+ * - at most two roots exist, so a larger count reads as none;
+ * - the roots must fit in the data.
+ */
+function decodeRoots(data: Uint8Array): string[] {
+    const offset = decodeUint(data, 32);
+    if (offset < BigInt(PRIVATE_TRANSFER_HEAD) || offset > BigInt(data.length - 32)) return [];
+    const count = decodeUint(data, Number(offset));
+    if (count > 2n) return [];
+    const start = Number(offset) + 32;
+    if (start + Number(count) * 32 > data.length) return [];
+    return Array.from({ length: Number(count) }, (_, i) =>
+        toHex(data.slice(start + i * 32, start + (i + 1) * 32))
+    );
+}
+
 /**
  * Is the ABI head long enough to hold `slots` complete 32-byte words?
  *
@@ -140,16 +165,19 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
         }
     }
 
-    // privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32)
+    // privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],uint32,uint256,uint32)
+    // and, before spec 18, privateTransfer(bytes,bytes32,...) with one root.
     // ABI head after selector (8 slots):
-    // [0-31] offset→proof | [32-63] root | [64-95] offset→nullifiers
+    // [0-31] offset→proof | [32-63] offset→roots (or the single root) | [64-95] offset→nullifiers
     // [96-127] offset→commitments | [128-159] offset→memos
     // [160-191] assetId (uint32) | [192-223] fee (uint256) | [224-255] circuit_version (uint32)
     if (fnSig.startsWith('privateTransfer(')) {
         try {
             const data = fromHex(input.slice(10));
             if (!hasFullHead(data, 8)) return { fnSig, method: methodOf(fnSig), args: {} };
-            const root = toHex(data.slice(32, 64));
+            const rootArgs = fnSig.startsWith('privateTransfer(bytes,bytes32[],')
+                ? { roots: decodeRoots(data) }
+                : { root: toHex(data.slice(32, 64)) };
             const assetId = decodeUint(data, 160);
             const fee = decodeUint(data, 192);
             const circuitVersion = decodeUint(data, 224);
@@ -173,7 +201,7 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
             return {
                 fnSig,
                 method: methodOf(fnSig),
-                args: { root, ...counts, assetId, fee, circuitVersion },
+                args: { ...rootArgs, ...counts, assetId, fee, circuitVersion },
             };
         } catch {
             return { fnSig, method: methodOf(fnSig), args: {} };

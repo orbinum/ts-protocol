@@ -17,7 +17,7 @@ import type {
     ShieldBatchParams,
     ClaimRelayFeesParams,
 } from './extrinsicParams';
-import { assertClaimRelayFeesParams } from './validation';
+import { assertClaimRelayFeesParams, assertMerkleRoots } from './validation';
 import { shieldBatchCallArgs, shieldCallArgs } from './callArgs';
 
 // ─── ShieldedPoolModule ───────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ export class ShieldedPoolModule {
      * Performs a private (shielded) transfer between two notes.
      * Submits as an UNSIGNED (gasless) transaction — fee is embedded in the ZK proof.
      * Pass a `signer` to fall back to signed submission (e.g. for testing).
-     * Extrinsic: shieldedPool.privateTransfer(proof, merkleRoot, nullifiers, commitments, memos, assetId, fee, circuitVersion)
+     * Extrinsic: shieldedPool.privateTransfer(proof, merkleRoots, nullifiers, commitments, memos, assetId, fee, circuitVersion)
      *
      * The relay fee recipient is NOT a parameter: the chain takes it from the
      * dispatch origin. Submitting unsigned credits the block author; submitting
@@ -120,6 +120,7 @@ export class ShieldedPoolModule {
         signer?: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
+        assertMerkleRoots(params.merkleRoots, 'privateTransfer.merkleRoots');
         const nullifiers = params.inputs.map((inp) => inp.nullifier);
         const commitments = params.outputs.map((out) => out.commitment);
         const memos = params.outputs.map((out, i) => {
@@ -130,7 +131,7 @@ export class ShieldedPoolModule {
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'private_transfer');
         const tx = callUnsafeTx(entry, {
             proof: params.proof,
-            merkle_root: params.merkleRoot,
+            merkle_roots: params.merkleRoots,
             nullifiers,
             commitments,
             encrypted_memos: memos,

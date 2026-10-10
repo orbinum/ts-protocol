@@ -263,6 +263,12 @@ export function addressToAccountIdHex(addr: string): string | null {
     return substrateSs58ToAccountIdHex(addr);
 }
 
+/** Circuit versions whose recipient encoding this library knows. */
+const RECIPIENT_RULES: ReadonlySet<number> = new Set([1, 2, 3]);
+
+/** First circuit version that binds the recipient through `blake2_256`. */
+const RECIPIENT_BLAKE2_FROM = 2;
+
 /**
  * Any address — SS58, EVM H160, or 0x-prefixed AccountId32 hex — as the BN254
  * scalar the unshield circuit takes for its `recipient` public signal.
@@ -271,7 +277,8 @@ export function addressToAccountIdHex(addr: string): string | null {
  * addresses become `H160 ++ [0x00; 12]`, then
  *
  * - circuit v1: the 32 bytes read little-endian, mod BN254_R;
- * - circuit v2 (memo-bound): `blake2_256(bytes)` read little-endian, mod BN254_R.
+ * - circuit v2 and v3 (memo-bound): `blake2_256(bytes)` read little-endian,
+ *   mod BN254_R. v3 changes the spending-key rule, not the recipient one.
  *
  * v1 maps `R` and `R ± r` — two different accounts — to the same scalar, so a
  * copier could redirect a pending unshield to an account nobody controls; v2's
@@ -283,7 +290,7 @@ export function addressToAccountIdHex(addr: string): string | null {
  * the recipient differently, and guessing would prove against the wrong one.
  */
 export function addressToFieldElement(address: string, circuitVersion: number): bigint {
-    if (circuitVersion !== 1 && circuitVersion !== 2) {
+    if (!RECIPIENT_RULES.has(circuitVersion)) {
         throw new Error(`No recipient encoding for circuit version ${circuitVersion}`);
     }
     const accountIdHex = addressToAccountIdHex(address);
@@ -298,6 +305,6 @@ export function addressToFieldElement(address: string, circuitVersion: number): 
         throw new Error(`AccountId32 must be 32 bytes of hex: ${accountIdHex}`);
     }
     const bytes = fromHex(accountIdHex);
-    const bound = circuitVersion === 2 ? blake2b(bytes, { dkLen: 32 }) : bytes;
+    const bound = circuitVersion >= RECIPIENT_BLAKE2_FROM ? blake2b(bytes, { dkLen: 32 }) : bytes;
     return bytesToBigintLE(bound) % BN254_R;
 }

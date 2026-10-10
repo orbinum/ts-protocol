@@ -15,6 +15,28 @@ import {
     poolRejectionKind,
 } from '../../../../src/chain/pallet/shielded-pool/errors';
 
+/**
+ * A busy node refusing the merkle-proof RPC is load, not a missing leaf.
+ * Reading it as a ghost note would purge a real note — the worst reaction this
+ * module can produce.
+ */
+describe('a busy proof RPC is never a ghost note', () => {
+    it.each([
+        'Merkle proof queue is full, try again later',
+        'privacy_getMerkleProofByCommitment failed: Merkle proof queue is full, try again later',
+        'privacy_getMerkleProofByCommitment failed: Too many Merkle proofs in flight, try again later',
+    ])('%s', (message) => {
+        expect(isGhostNoteError(message)).toBe(false);
+        expect(classifyChainError(message)).not.toBe('ghost-note');
+    });
+
+    it('still reads a real missing leaf as a ghost note', () => {
+        expect(
+            isGhostNoteError('privacy_getMerkleProofByCommitment failed: commitment not found')
+        ).toBe(true);
+    });
+});
+
 describe('extractPalletError', () => {
     it('reads the variant out of a Substrate error', () => {
         expect(extractPalletError('… message: Some("NullifierAlreadyUsed") …')).toBe(

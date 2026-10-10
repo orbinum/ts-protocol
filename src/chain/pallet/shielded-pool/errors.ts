@@ -11,6 +11,8 @@
  * `UnknownMerkleRoot` means "rescan and retry" while phrasing it differently.
  */
 
+import { SERVER_BUSY_TEXT } from '../../rpc/busy';
+
 /**
  * The pallet error name inside a raw chain error, or null.
  *
@@ -180,8 +182,13 @@ export function poolRejectionKind(raw: string): PalletErrorKind {
     return 'unknown';
 }
 
-/** The merkle-proof RPC reporting no leaf for a commitment. */
+/**
+ * The merkle-proof RPC reporting no leaf for a commitment. A busy refusal from
+ * the same RPC is load, not absence, and never matches: reading it as a ghost
+ * note would purge a real one.
+ */
 function isMissingMerkleProof(rawMessage: string): boolean {
+    if (SERVER_BUSY_TEXT.test(rawMessage)) return false;
     return /getMerkleProofByCommitment|commitment not found|no merkle/i.test(rawMessage);
 }
 

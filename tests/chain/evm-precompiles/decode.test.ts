@@ -13,7 +13,8 @@ const SP_ADDR = PRECOMPILE_ADDR.SHIELDED_POOL;
 
 const COMMITMENT = '0x' + 'aa'.repeat(32);
 const NULLIFIER = '0x' + 'bb'.repeat(32);
-const ROOT = '0x' + 'cc'.repeat(32);
+// Canonical: a root is a field element, so its top (little-endian last) byte stays below r's.
+const ROOT = '0x' + 'cc'.repeat(31) + '00';
 const PROOF = new Uint8Array([0x01, 0x02, 0x03]);
 const RECIPIENT = '0x' + 'dd'.repeat(32);
 
@@ -222,7 +223,7 @@ describe('decodePrecompileCalldata — privateTransfer', () => {
 
     const BASE_TRANSFER = {
         proof: PROOF,
-        merkleRoot: ROOT,
+        merkleRoots: [ROOT, ROOT] as [string, string],
         inputs: [{ nullifier: NULLIFIER, commitment: COMMITMENT }],
         outputs: [{ commitment: COMMITMENT, encryptedMemo: new Uint8Array(180) }],
         assetId: 0,
@@ -233,7 +234,7 @@ describe('decodePrecompileCalldata — privateTransfer', () => {
         const calldata = sp.buildPrivateTransferCalldata(BASE_TRANSFER);
         const result = decodePrecompileCalldata(SP_ADDR, calldata);
         expect(result?.fnSig).toBe(
-            'privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32)'
+            'privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],uint32,uint256,uint32)'
         );
     });
 
@@ -243,10 +244,87 @@ describe('decodePrecompileCalldata — privateTransfer', () => {
         expect(result?.args['circuitVersion']).toBe(5n);
     });
 
-    it('round-trips root', () => {
-        const calldata = sp.buildPrivateTransferCalldata(BASE_TRANSFER);
+    it('round-trips one root per input, in order', () => {
+        const other = '0x' + '7e'.repeat(31) + '00';
+        const calldata = sp.buildPrivateTransferCalldata({
+            ...BASE_TRANSFER,
+            merkleRoots: [ROOT, other],
+        });
         const result = decodePrecompileCalldata(SP_ADDR, calldata);
-        expect((result?.args['root'] as string).toLowerCase()).toBe(ROOT.toLowerCase());
+        expect((result?.args['roots'] as string[]).map((r) => r.toLowerCase())).toEqual([
+            ROOT.toLowerCase(),
+            other,
+        ]);
+    });
+
+    it('still decodes the single-root calldata of older blocks', () => {
+        const head = new Uint8Array(8 * 32);
+        head.set(new Uint8Array(32).fill(0x5a), 32);
+        const hex = Array.from(head, (b) => b.toString(16).padStart(2, '0')).join('');
+        const result = decodePrecompileCalldata(SP_ADDR, '0x66ed2cd4' + hex);
+        expect(result?.method).toBe('privateTransfer');
+        expect(result?.args['root']).toBe('0x' + '5a'.repeat(32));
+    });
+
+    it('reports no roots for a hostile roots offset', () => {
+        const head = new Uint8Array(8 * 32);
+        head.set(new Uint8Array(32).fill(0xff), 32); // offset → roots: far past the end
+        const hex = Array.from(head, (b) => b.toString(16).padStart(2, '0')).join('');
+        const result = decodePrecompileCalldata(SP_ADDR, '0x63d0b9a0' + hex);
+        expect(result?.args['roots']).toEqual([]);
+    });
+
+    /** A privateTransfer calldata of `head` plus `tail`, with the roots offset and count given. */
+    function withRoots(
+        offset: bigint,
+        count: bigint,
+        tail: Uint8Array = new Uint8Array(0)
+    ): string {
+        const word = (v: bigint) => {
+            const w = new Uint8Array(32);
+            for (let i = 31; i >= 0; i--, v >>= 8n) w[i] = Number(v & 0xffn);
+            return w;
+        };
+        const data = new Uint8Array(8 * 32 + 32 + tail.length);
+        data.set(word(offset), 32);
+        data.set(word(count), 8 * 32);
+        data.set(tail, 8 * 32 + 32);
+        return '0x63d0b9a0' + Array.from(data, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    it('never reads the head as roots: an offset into the head reports none', () => {
+        for (const offset of [0n, 32n, 64n, 7n * 32n]) {
+            expect(decodePrecompileCalldata(SP_ADDR, withRoots(offset, 2n))?.args['roots']).toEqual(
+                []
+            );
+        }
+    });
+
+    it('reports none for a count past two, or roots that run past the data', () => {
+        const two = new Uint8Array(64).fill(0x11);
+        expect(decodePrecompileCalldata(SP_ADDR, withRoots(256n, 3n, two))?.args['roots']).toEqual(
+            []
+        );
+        expect(
+            decodePrecompileCalldata(SP_ADDR, withRoots(256n, 1n << 255n, two))?.args['roots']
+        ).toEqual([]);
+        expect(
+            decodePrecompileCalldata(SP_ADDR, withRoots(256n, 2n, two.slice(0, 40)))?.args['roots']
+        ).toEqual([]);
+        expect(
+            decodePrecompileCalldata(SP_ADDR, withRoots(1n << 200n, 2n, two))?.args['roots']
+        ).toEqual([]);
+    });
+
+    it('reads exactly the roots a well-placed array holds', () => {
+        const two = new Uint8Array(64);
+        two.fill(0x11, 0, 32);
+        two.fill(0x22, 32);
+        expect(decodePrecompileCalldata(SP_ADDR, withRoots(256n, 2n, two))?.args['roots']).toEqual([
+            '0x' + '11'.repeat(32),
+            '0x' + '22'.repeat(32),
+        ]);
+        expect(decodePrecompileCalldata(SP_ADDR, withRoots(256n, 0n))?.args['roots']).toEqual([]);
     });
 
     it('counts nullifiers correctly', () => {

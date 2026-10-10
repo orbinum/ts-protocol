@@ -200,3 +200,31 @@ describe('PrivacyModule.getMerkleProofByCommitment', () => {
         expect(proof.root).toBe('0xabcdef');
     });
 });
+
+describe('PrivacyModule — a busy node', () => {
+    it('retries the proof by commitment until the node has room', async () => {
+        let calls = 0;
+        const substrate = {
+            request: vi.fn(async () => {
+                if (++calls < 3)
+                    throw Object.assign(new Error('Merkle proof queue is full'), { code: -32009 });
+                return { root: '0xr', path: ['0xa'], leaf_index: 1, tree_depth: 20, tree_id: 0 };
+            }),
+        } as unknown as SubstrateClient;
+        const proof = await new PrivacyModule(substrate).getMerkleProofByCommitment('0xc');
+        expect(proof.leafIndex).toBe(1);
+        expect(calls).toBe(3);
+    });
+
+    it('does not retry a missing commitment', async () => {
+        const substrate = {
+            request: vi.fn(async () => {
+                throw new Error('commitment not found');
+            }),
+        } as unknown as SubstrateClient;
+        await expect(
+            new PrivacyModule(substrate).getMerkleProofByCommitment('0xc')
+        ).rejects.toThrow('not found');
+        expect(substrate.request).toHaveBeenCalledTimes(1);
+    });
+});

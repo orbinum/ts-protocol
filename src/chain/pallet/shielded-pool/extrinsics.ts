@@ -92,8 +92,8 @@ export type RawTransferOutput = {
 export type PrivateTransferArgs = {
     /** Groth16 proof bytes — max 512 bytes. */
     proof: number[];
-    /** 32-byte Merkle root (LE). */
-    merkleRoot: Bytes32;
+    /** The 32-byte Merkle root (LE) each input is proven against, in input order. */
+    merkleRoots: [Bytes32, Bytes32];
     nullifiers: RawTransferInput[];
     outputs: RawTransferOutput[];
     encryptedMemos: number[][];

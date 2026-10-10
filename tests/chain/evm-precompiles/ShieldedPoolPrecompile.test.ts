@@ -28,7 +28,8 @@ function mockEvm(): EvmClient {
 
 const COMMITMENT = '0x' + 'aa'.repeat(32);
 const NULLIFIER = '0x' + 'bb'.repeat(32);
-const ROOT = '0x' + 'cc'.repeat(32);
+// Canonical: a root is a field element, so its top (little-endian last) byte stays below r's.
+const ROOT = '0x' + 'cc'.repeat(31) + '00';
 const PROOF = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
 const RECIPIENT = '0x' + 'dd'.repeat(32); // 64 hex chars → 32 bytes
 
@@ -53,7 +54,7 @@ const UNSHIELD_PARAMS: UnshieldParams = {
 
 const TRANSFER_PARAMS: PrivateTransferParams = {
     proof: PROOF,
-    merkleRoot: ROOT,
+    merkleRoots: [ROOT, ROOT],
     inputs: [{ nullifier: NULLIFIER, commitment: COMMITMENT }],
     outputs: [{ commitment: COMMITMENT, encryptedMemo: new Uint8Array(180) }],
     assetId: 0,
@@ -137,7 +138,7 @@ describe('ShieldedPoolPrecompile.buildPrivateTransferCalldata', () => {
         // went unnoticed before. Pin it.
         const precompile = new ShieldedPoolPrecompile(mockEvm());
         const calldata = precompile.buildPrivateTransferCalldata(TRANSFER_PARAMS);
-        expect(calldata.slice(0, 10)).toBe('0x66ed2cd4');
+        expect(calldata.slice(0, 10)).toBe('0x63d0b9a0');
     });
 
     it('golden: the head is 8 slots, with the fee in slot 6', () => {

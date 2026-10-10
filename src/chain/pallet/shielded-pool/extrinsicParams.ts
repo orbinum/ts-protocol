@@ -97,8 +97,12 @@ export type PrivateTransferParams = {
     outputs: PrivateTransferOutput[];
     /** ZK proof bytes */
     proof: Uint8Array;
-    /** 0x-prefixed merkle root hex */
-    merkleRoot: string;
+    /**
+     * 0x-prefixed root each input is proven against, in input order. Equal for
+     * two notes of one tree; different roots need circuit v3. A dummy input's
+     * slot repeats the real root (every root must be known to the chain).
+     */
+    merkleRoots: [string, string];
     /** Asset ID being transferred (public input of the proof) */
     assetId: number;
     /** Gasless fee in planck (default 0n; input_sum == output_sum + fee in circuit).

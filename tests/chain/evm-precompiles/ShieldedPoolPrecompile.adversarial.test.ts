@@ -25,7 +25,7 @@ const H32 = (b: string) => '0x' + b.repeat(32);
 
 const TRANSFER_PARAMS = {
     proof: new Uint8Array(256).fill(0xaa),
-    merkleRoot: H32('11'),
+    merkleRoots: [H32('11'), H32('11')] as [string, string],
     inputs: [{ nullifier: H32('22'), commitment: H32('21') }],
     outputs: [{ commitment: H32('33'), encryptedMemo: MEMO }],
     assetId: 0,
@@ -36,9 +36,25 @@ const TRANSFER_PARAMS = {
 
 describe('the privateTransfer selector cannot drift', () => {
     it('is exactly the four bytes the precompile decodes', () => {
-        // keccak256("privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],
+        // keccak256("privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],
         //            uint32,uint256,uint32)")[0..4]
-        expect(Array.from(SP_SEL.PRIVATE_TRANSFER)).toEqual([0x66, 0xed, 0x2c, 0xd4]);
+        expect(Array.from(SP_SEL.PRIVATE_TRANSFER)).toEqual([0x63, 0xd0, 0xb9, 0xa0]);
+    });
+
+    it('is not the single-root selector the node no longer answers', () => {
+        expect(Array.from(SP_SEL.PRIVATE_TRANSFER)).not.toEqual([0x66, 0xed, 0x2c, 0xd4]);
+    });
+
+    it('refuses anything but exactly two roots', () => {
+        const p = new ShieldedPoolPrecompile(mockEvm());
+        for (const merkleRoots of [[], [H32('11')], [H32('11'), H32('11'), H32('11')]]) {
+            expect(() =>
+                p.buildPrivateTransferCalldata({
+                    ...TRANSFER_PARAMS,
+                    merkleRoots: merkleRoots as unknown as [string, string],
+                })
+            ).toThrow(/exactly two merkle roots/);
+        }
     });
 
     it('is not the nine-argument selector the node refuses', () => {
@@ -53,10 +69,10 @@ describe('the privateTransfer selector cannot drift', () => {
         const p = new ShieldedPoolPrecompile(mockEvm());
         // An omitted fee and an explicit one must produce the same selector: the
         // selector covers the signature, never the values.
-        expect(p.buildPrivateTransferCalldata(TRANSFER_PARAMS).slice(0, 10)).toBe('0x66ed2cd4');
+        expect(p.buildPrivateTransferCalldata(TRANSFER_PARAMS).slice(0, 10)).toBe('0x63d0b9a0');
         for (const fee of [0n, 1n, 10n ** 30n]) {
             const cd = p.buildPrivateTransferCalldata({ ...TRANSFER_PARAMS, fee });
-            expect(cd.slice(0, 10)).toBe('0x66ed2cd4');
+            expect(cd.slice(0, 10)).toBe('0x63d0b9a0');
         }
     });
 });
@@ -131,7 +147,10 @@ describe('values that cannot be encoded are refused, not truncated', () => {
     it('rejects malformed hex in a commitment, nullifier, or root', () => {
         for (const bad of ['0xzz', 'no-0x-prefix', '0x123', '']) {
             expect(() =>
-                p().buildPrivateTransferCalldata({ ...TRANSFER_PARAMS, merkleRoot: bad })
+                p().buildPrivateTransferCalldata({
+                    ...TRANSFER_PARAMS,
+                    merkleRoots: [H32('11'), bad],
+                })
             ).toThrow();
             expect(() =>
                 p().buildPrivateTransferCalldata({

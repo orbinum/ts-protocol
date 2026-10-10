@@ -74,7 +74,7 @@ const TRANSFER_PARAMS = {
         { commitment: '0x' + 'ff'.repeat(32), encryptedMemo: new Uint8Array(180) },
     ],
     proof: new Uint8Array(32),
-    merkleRoot: '0x' + 'a1'.repeat(32),
+    merkleRoots: ['0x' + 'a1'.repeat(31) + '00', '0x' + 'a2'.repeat(31) + '00'] as [string, string],
     circuitVersion: 1,
 };
 

@@ -1,13 +1,20 @@
 import type { SubstrateClient } from '../substrate/SubstrateClient';
-import type { RawRpcV2MerkleProof, RawRpcV2NullifierStatus, RawRpcV2PoolStats } from './types/raw';
+import type {
+    RawRpcV2MerkleProof,
+    RawRpcV2NullifierStatus,
+    RawRpcV2PoolStats,
+    RawRpcV2SubtreeRoots,
+} from './types/raw';
 import type {
     RpcV2NullifierStatus,
     RpcV2PoolStats,
     RpcV2MerkleProof,
+    RpcV2SubtreeRoots,
     PrivacyMerkleProof,
 } from './types';
 import { mapAssetBalance } from './helpers';
 import { withBusyRetry } from './busy';
+import { parseSubtreeRoots } from './subtreeRoots';
 
 /**
  * Typed client for the Orbinum `rpc-v2` endpoints under the `privacy_*` namespace.
@@ -60,6 +67,29 @@ export class PrivacyModule {
             treeId: raw.tree_id,
             root: raw.root,
         };
+    }
+
+    /**
+     * Up to `count` (at most 4096 per call) level-6 subtree roots of tree
+     * `treeId` from `start`, with the tree's anchoring root, read at one block.
+     *
+     * Asking for a tree's roots reveals nothing about which note a wallet holds
+     * (see `protocol/merkle`). The response is checked against the request
+     * before it is returned (`parseSubtreeRoots`); a busy node is retried.
+     */
+    async getSubtreeRoots(
+        treeId: number,
+        start: number,
+        count: number
+    ): Promise<RpcV2SubtreeRoots> {
+        const raw = await withBusyRetry(() =>
+            this.substrate.request<RawRpcV2SubtreeRoots>('privacy_getSubtreeRoots', [
+                treeId,
+                start,
+                count,
+            ])
+        );
+        return parseSubtreeRoots(raw, treeId, start, count);
     }
 
     /** Returns the spend status of a nullifier. */

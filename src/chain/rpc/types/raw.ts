@@ -6,6 +6,16 @@ export type RawRpcV2MerkleProof = {
     tree_id?: number;
 };
 
+export type RawRpcV2SubtreeRoots = {
+    tree_id: number;
+    level: number;
+    tree_leaves: number;
+    sealed: boolean;
+    root: string;
+    start: number;
+    roots: string[];
+};
+
 export type RawRpcV2NullifierStatus = {
     nullifier: string;
     is_spent: boolean;

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-09
+
+**Breaking** — for runtime spec 18 / transaction version 6: a private transfer
+proves each input against its own root, so it can spend notes from two trees.
+Also: unshield v3 recipients, a busy proof RPC that is retried and never read
+as a ghost note, and Merkle paths a wallet builds itself.
+
 ### Added
 
 - `protocol/merkle`: Merkle paths a wallet builds itself, so no node learns

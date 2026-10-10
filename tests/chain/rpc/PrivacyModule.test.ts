@@ -201,6 +201,54 @@ describe('PrivacyModule.getMerkleProofByCommitment', () => {
     });
 });
 
+describe('PrivacyModule.getSubtreeRoots', () => {
+    const root = (b: string) => '0x' + b.repeat(31) + '00';
+    const raw = {
+        tree_id: 1,
+        level: 6,
+        tree_leaves: 130,
+        sealed: false,
+        root: root('09'),
+        start: 0,
+        roots: [root('0a'), root('0b'), root('0c')],
+    };
+
+    it('maps the response and passes tree, start and count', async () => {
+        const substrate = makeSubstrate({ privacy_getSubtreeRoots: raw });
+        const page = await new PrivacyModule(substrate).getSubtreeRoots(1, 0, 4096);
+        expect(page).toEqual({
+            treeId: 1,
+            level: 6,
+            treeLeaves: 130,
+            sealed: false,
+            root: root('09'),
+            start: 0,
+            roots: [root('0a'), root('0b'), root('0c')],
+        });
+        expect(substrate.request).toHaveBeenCalledWith('privacy_getSubtreeRoots', [1, 0, 4096]);
+    });
+
+    it('refuses a response that does not answer the request', async () => {
+        const substrate = makeSubstrate({ privacy_getSubtreeRoots: { ...raw, start: 7 } });
+        await expect(new PrivacyModule(substrate).getSubtreeRoots(1, 0, 4096)).rejects.toThrow(
+            /invalid subtree roots/
+        );
+    });
+
+    it('retries a busy node', async () => {
+        let calls = 0;
+        const substrate = {
+            request: vi.fn(async () => {
+                if (++calls < 2)
+                    throw Object.assign(new Error('Merkle proof queue is full'), { code: -32009 });
+                return raw;
+            }),
+        } as unknown as SubstrateClient;
+        await new PrivacyModule(substrate).getSubtreeRoots(1, 0, 4096);
+        expect(calls).toBe(2);
+    });
+});
+
 describe('PrivacyModule — a busy node', () => {
     it('retries the proof by commitment until the node has room', async () => {
         let calls = 0;

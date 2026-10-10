@@ -7,6 +7,23 @@ export type RpcV2MerkleProof = {
 
 export type PrivacyMerkleProof = RpcV2MerkleProof & { root: string };
 
+/**
+ * One page of a tree's level-6 subtree roots (`privacy_getSubtreeRoots`), with
+ * the root the tree anchors to at the same state. Hex values are 32-byte
+ * little-endian field elements.
+ */
+export type RpcV2SubtreeRoots = {
+    treeId: number;
+    level: number;
+    /** Leaves in the tree: its capacity once sealed. */
+    treeLeaves: number;
+    sealed: boolean;
+    root: string;
+    /** Index of `roots[0]` within the level. */
+    start: number;
+    roots: string[];
+};
+
 export type RpcV2NullifierStatus = {
     nullifier: string;
     isSpent: boolean;

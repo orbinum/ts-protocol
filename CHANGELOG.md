@@ -7,30 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+### Added
 
-- **Breaking — transfer across trees (node spec 18 / tx 6, circuit 1 v3):**
-  `PrivateTransferParams.merkleRoot` → `merkleRoots: [string, string]`, the root
-  each input is proven against (equal for two notes of one tree; a dummy input's
-  slot repeats the real root). `ShieldedPoolModule.privateTransfer` sends
-  `merkle_roots`; `assertMerkleRoots` refuses anything but two 32-byte roots.
-- Precompile `privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],uint32,uint256,uint32)`,
-  selector `0x63d0b9a0` (`SP_SEL.PRIVATE_TRANSFER`). The single-root selector
-  `0x66ed2cd4` stays in `KNOWN_PRECOMPILES` only to decode older blocks.
-- Decoders: the new calldata decodes `roots` (bounds-checked; at most two, and
-  never from an offset into the head), the old one still `root`;
-  `mapExtrinsicArgs` gives `merkle_roots` for spec 18+ blocks and `merkle_root`
-  for older ones. It now also reads camelCase arg names (polkadot.js decodes
-  `merkleRoots`, `encryptedMemos`…), which it used to drop in silence.
-- `assertMerkleRoots` also refuses a root that is not a canonical field element:
-  the pallet matches roots byte for byte, so `r + x` is no root it ever had.
-- `addressToFieldElement` accepts circuit version 3: unshield v3 keeps v2's
-  memo-bound recipient (`blake2_256`); only its spending-key rule changed.
-  Unknown versions still throw.
-- **Busy node (spec 18 queues Merkle proofs):** `isServerBusyError` and
-  `SERVER_BUSY_CODE` (`-32009`). `PrivacyModule.getMerkleProof*` retries a busy
-  refusal with backoff, and `classifyChainError` never reads one as
-  `ghost-note`, which would purge a real note.
+- `protocol/merkle`: Merkle paths a wallet builds itself, so no node learns
+  which note it spends. `blockPath` (the 6 lower levels, from a block's 64
+  leaves), `SubtreeRootTree` (the 14 upper ones, from level-6 subtree roots,
+  remembering subtrees of final blocks), `buildLocalPath` (both, checked against
+  the tree's block root and the anchoring root; `LocalPathMismatchError`
+  otherwise), `verifyPath`, `zeroHash`, `hashPair`, `BLOCKS_PER_TREE`. Same hash
+  and zero ladder as the pallet; equal to the node's path byte for byte. Every
+  leaf and root must be a canonical field element and a tree holds at most
+  `BLOCKS_PER_TREE` roots: an untrusted value is refused, never reduced into
+  another.
+- `PrivacyModule.getSubtreeRoots(treeId, start, count)` (`privacy_getSubtreeRoots`,
+  node runtime API v4) and `RpcV2SubtreeRoots`. The node's answer is checked
+  against the request before it is returned (`InvalidSubtreeRootsError`: level,
+  tree, start, tree size, root count, canonical roots); a busy node is retried.
 
 ## [0.7.1] - 2026-10-05
 

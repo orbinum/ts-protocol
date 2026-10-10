@@ -7,6 +7,7 @@ import type {
     PrivacyMerkleProof,
 } from './types';
 import { mapAssetBalance } from './helpers';
+import { withBusyRetry } from './busy';
 
 /**
  * Typed client for the Orbinum `rpc-v2` endpoints under the `privacy_*` namespace.
@@ -27,9 +28,9 @@ export class PrivacyModule {
      * is the one that takes a string.
      */
     async getMerkleProof(leafIndex: number): Promise<RpcV2MerkleProof> {
-        const raw = await this.substrate.request<RawRpcV2MerkleProof>('privacy_getMerkleProof', [
-            leafIndex,
-        ]);
+        const raw = await withBusyRetry(() =>
+            this.substrate.request<RawRpcV2MerkleProof>('privacy_getMerkleProof', [leafIndex])
+        );
         return {
             path: raw.path,
             leafIndex: raw.leaf_index,
@@ -47,9 +48,10 @@ export class PrivacyModule {
      * consistent with the returned root.
      */
     async getMerkleProofByCommitment(commitmentHex: string): Promise<PrivacyMerkleProof> {
-        const raw = await this.substrate.request<RawRpcV2MerkleProof>(
-            'privacy_getMerkleProofByCommitment',
-            [commitmentHex]
+        const raw = await withBusyRetry(() =>
+            this.substrate.request<RawRpcV2MerkleProof>('privacy_getMerkleProofByCommitment', [
+                commitmentHex,
+            ])
         );
         return {
             path: raw.path,

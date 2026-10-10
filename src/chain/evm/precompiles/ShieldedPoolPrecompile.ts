@@ -84,7 +84,7 @@ export class ShieldedPoolPrecompile {
      * hidden by design, so any address (a relayer included) can submit a valid
      * proof.
      *
-     * Extrinsic: `shieldedPool.privateTransfer(proof, merkleRoot, nullifiers,
+     * Extrinsic: `shieldedPool.privateTransfer(proof, merkleRoots, nullifiers,
      * commitments, memos, assetId, fee, circuitVersion)` — eight arguments; see
      * `buildPrivateTransferCalldata` for the encoding order.
      */

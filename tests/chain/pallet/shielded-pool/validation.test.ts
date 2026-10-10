@@ -1,8 +1,42 @@
 import { describe, it, expect } from 'vitest';
 import {
     assertClaimRelayFeesParams,
+    assertMerkleRoots,
     assertShieldParams,
 } from '../../../../src/chain/pallet/shielded-pool/validation';
+import { BN254_R } from '../../../../src/foundation/crypto/constants';
+import { commitmentHexOf } from '../../../../src/foundation/encoding/bytes';
+
+/** `private_transfer`'s two roots; both call paths use this check. */
+describe('assertMerkleRoots', () => {
+    const root = commitmentHexOf(12345n);
+
+    it('accepts two canonical roots, equal or not', () => {
+        expect(() => assertMerkleRoots([root, root], 'w')).not.toThrow();
+        expect(() => assertMerkleRoots([root, commitmentHexOf(BN254_R - 1n)], 'w')).not.toThrow();
+    });
+
+    it('refuses any count but two', () => {
+        for (const roots of [[], [root], [root, root, root]]) {
+            expect(() => assertMerkleRoots(roots, 'w')).toThrow(/exactly two/);
+        }
+        expect(() => assertMerkleRoots('not-an-array' as never, 'w')).toThrow(/exactly two/);
+    });
+
+    it('refuses malformed hex', () => {
+        for (const bad of ['0x12', root.slice(2), root + '00', '0x' + 'zz'.repeat(32)]) {
+            expect(() => assertMerkleRoots([root, bad], 'w')).toThrow(/32-byte hex/);
+        }
+    });
+
+    // The pallet matches roots byte for byte: `r + x` is the same field element
+    // as `x` but a root no tree ever had.
+    it('refuses a non-canonical field element', () => {
+        for (const bad of [commitmentHexOf(BN254_R), '0x' + 'ff'.repeat(32)]) {
+            expect(() => assertMerkleRoots([bad, root], 'w')).toThrow(/canonical/);
+        }
+    });
+});
 
 /** `claim_relay_fees(asset_id: u32, amount: u128)`; both call paths use this check. */
 describe('assertClaimRelayFeesParams', () => {

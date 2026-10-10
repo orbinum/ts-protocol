@@ -24,6 +24,7 @@ import type {
 } from '../../pallet/shielded-pool/extrinsicParams';
 import {
     assertClaimRelayFeesParams,
+    assertMerkleRoots,
     assertShieldParams,
 } from '../../pallet/shielded-pool/validation';
 import { MemoFormat } from '../../../protocol/memo/index';
@@ -101,11 +102,11 @@ export function buildShieldCalldata(params: ShieldParams): string {
 
 /**
  * Calldata for
- * `privateTransfer(bytes, bytes32, bytes32[], bytes32[], bytes[], uint32, uint256, uint32)`.
+ * `privateTransfer(bytes, bytes32[], bytes32[], bytes32[], bytes[], uint32, uint256, uint32)`.
  *
- * Eight arguments, ending in the circuit version the input notes were created
- * under. The argument count is part of the selector: a ninth would change it,
- * and the precompile answers only to `0x66ed2cd4`.
+ * Eight arguments: the proof, the two roots (one per input), the nullifiers,
+ * commitments and memos, the asset, the fee and the circuit version. The
+ * precompile answers only to `0x63d0b9a0`.
  */
 export function buildPrivateTransferCalldata(params: PrivateTransferParams): string {
     const nullifiers = params.inputs.map((input, i) =>
@@ -121,12 +122,15 @@ export function buildPrivateTransferCalldata(params: PrivateTransferParams): str
         );
         return output.encryptedMemo;
     });
-    const root = bytes32(params.merkleRoot, 'buildPrivateTransferCalldata.merkleRoot');
+    assertMerkleRoots(params.merkleRoots, 'buildPrivateTransferCalldata.merkleRoots');
+    const roots = params.merkleRoots.map((root, i) =>
+        bytes32(root, `buildPrivateTransferCalldata.merkleRoots[${i}]`)
+    );
 
     return encodeHex(
         SP_SEL.PRIVATE_TRANSFER,
         { type: 'bytes', value: params.proof },
-        { type: 'bytes32', value: root },
+        { type: 'bytes32[]', value: roots },
         { type: 'bytes32[]', value: nullifiers },
         { type: 'bytes32[]', value: commitments },
         { type: 'bytes[]', value: memos },

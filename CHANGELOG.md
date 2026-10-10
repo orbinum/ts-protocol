@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking — transfer across trees (node spec 18 / tx 6, circuit 1 v3):**
+  `PrivateTransferParams.merkleRoot` → `merkleRoots: [string, string]`, the root
+  each input is proven against (equal for two notes of one tree; a dummy input's
+  slot repeats the real root). `ShieldedPoolModule.privateTransfer` sends
+  `merkle_roots`; `assertMerkleRoots` refuses anything but two 32-byte roots.
+- Precompile `privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],uint32,uint256,uint32)`,
+  selector `0x63d0b9a0` (`SP_SEL.PRIVATE_TRANSFER`). The single-root selector
+  `0x66ed2cd4` stays in `KNOWN_PRECOMPILES` only to decode older blocks.
+- Decoders: the new calldata decodes `roots` (bounds-checked; at most two, and
+  never from an offset into the head), the old one still `root`;
+  `mapExtrinsicArgs` gives `merkle_roots` for spec 18+ blocks and `merkle_root`
+  for older ones. It now also reads camelCase arg names (polkadot.js decodes
+  `merkleRoots`, `encryptedMemos`…), which it used to drop in silence.
+- `assertMerkleRoots` also refuses a root that is not a canonical field element:
+  the pallet matches roots byte for byte, so `r + x` is no root it ever had.
+- `addressToFieldElement` accepts circuit version 3: unshield v3 keeps v2's
+  memo-bound recipient (`blake2_256`); only its spending-key rule changed.
+  Unknown versions still throw.
+- **Busy node (spec 18 queues Merkle proofs):** `isServerBusyError` and
+  `SERVER_BUSY_CODE` (`-32009`). `PrivacyModule.getMerkleProof*` retries a busy
+  refusal with backoff, and `classifyChainError` never reads one as
+  `ghost-note`, which would purge a real note.
+
 ## [0.7.1] - 2026-10-05
 
 ### Changed

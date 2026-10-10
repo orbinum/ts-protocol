@@ -7,6 +7,8 @@
  */
 import { MemoFormat } from '../../../protocol/memo/index';
 import { isHexOfLength } from '../../../foundation/encoding/hex';
+import { leHexToBigint } from '../../../foundation/encoding/bytes';
+import { BN254_R } from '../../../foundation/crypto/constants';
 import type { ClaimRelayFeesParams, ShieldParams } from './extrinsicParams';
 
 const U32_MAX = 0xffff_ffff;
@@ -22,6 +24,28 @@ function assertPositiveU128(value: bigint, field: string): void {
     if (value <= 0n || value > U128_MAX) {
         throw new Error(`${field}: expected 1..2^128-1, got ${value}`);
     }
+}
+
+/**
+ * `private_transfer`'s `merkle_roots: [Hash; 2]`: exactly two roots, one per
+ * input note, each a canonical field element in 32-byte little-endian hex.
+ *
+ * Canonical because the pallet matches roots byte for byte: `r + x` names the
+ * same field element as `x` but no root the chain ever recorded, so the spend
+ * would fail as an unknown root after a proof was paid for.
+ */
+export function assertMerkleRoots(roots: readonly string[], where: string): void {
+    if (!Array.isArray(roots) || roots.length !== 2) {
+        throw new Error(`${where}: expected exactly two merkle roots, one per input`);
+    }
+    roots.forEach((root, i) => {
+        if (!isHexOfLength(root, 32)) {
+            throw new Error(`${where}[${i}]: expected a 0x-prefixed 32-byte hex string`);
+        }
+        if (leHexToBigint(root) >= BN254_R) {
+            throw new Error(`${where}[${i}]: not a canonical field element`);
+        }
+    });
 }
 
 /** `claim_relay_fees(asset_id: u32, amount: u128)`, with a positive amount. */

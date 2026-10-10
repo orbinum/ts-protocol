@@ -76,7 +76,7 @@ describe('pallet-args types', () => {
         };
         const args: PrivateTransferArgs = {
             proof: new Array(192).fill(0),
-            merkleRoot: new Array(32).fill(0),
+            merkleRoots: [new Array(32).fill(0), new Array(32).fill(0)],
             nullifiers: [input],
             outputs: [output],
             encryptedMemos: [new Array(104).fill(0)],

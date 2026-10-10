@@ -21,8 +21,13 @@ import { formatBalance } from '../../../foundation/text/format';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Maps raw extrinsic args (which may use positional keys like `arg0`, `arg1`)
- * to semantic field names for a given pallet section/method.
+ * Maps raw extrinsic args to semantic field names for a given pallet
+ * section/method.
+ *
+ * Decoders name args differently: PAPI keeps the metadata's snake_case
+ * (`merkle_roots`), polkadot.js camelCases them (`merkleRoots`), others go
+ * positional (`arg1`, `1`). Every form is accepted, so a decoder change never
+ * drops a field in silence.
  *
  * @param section - Pallet name (e.g. `'shieldedPool'`).
  * @param method  - Call name (e.g. `'shield'`).
@@ -41,6 +46,8 @@ export function mapExtrinsicArgs(
 
     const get = (idx: number, name: string) => {
         if (name in args) return args[name];
+        const camel = name.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+        if (camel in args) return args[camel];
         const argKey = `arg${idx}`;
         if (argKey in args) return args[argKey];
         if (idx in args) return args[idx];
@@ -202,9 +209,17 @@ export function mapExtrinsicArgs(
             return { operations: ops };
         }
         if (m_norm === 'privatetransfer') {
+            const roots = get(1, 'merkle_roots');
+            const single = get(-1, 'merkle_root');
+            const rootArgs =
+                single !== undefined && roots === undefined
+                    ? { merkle_root: single }
+                    : Array.isArray(roots)
+                      ? { merkle_roots: roots }
+                      : { merkle_root: get(1, 'merkle_root') };
             return {
                 proof: get(0, 'proof'),
-                merkle_root: get(1, 'merkle_root'),
+                ...rootArgs,
                 nullifiers: get(2, 'nullifiers'),
                 commitments: get(3, 'commitments'),
                 encrypted_memos: get(4, 'encrypted_memos'),

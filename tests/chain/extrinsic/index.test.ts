@@ -147,6 +147,31 @@ describe('mapExtrinsicArgs — shieldedPool', () => {
         expect(result['commitments']).toEqual(['0xcommit']);
     });
 
+    it('maps private_transfer with one root per input (spec 18+)', () => {
+        const positionalResult = mapExtrinsicArgs(
+            'shieldedPool',
+            'private_transfer',
+            positional('0xp', ['0xr0', '0xr1'], [], [], [], 0, '10', 3)
+        );
+        expect(positionalResult['merkle_roots']).toEqual(['0xr0', '0xr1']);
+        expect(positionalResult).not.toHaveProperty('merkle_root');
+
+        const named = mapExtrinsicArgs('shieldedPool', 'private_transfer', {
+            proof: '0xp',
+            merkle_roots: ['0xr0', '0xr1'],
+        });
+        expect(named['merkle_roots']).toEqual(['0xr0', '0xr1']);
+    });
+
+    it('keeps the single merkle_root of an older private_transfer', () => {
+        const result = mapExtrinsicArgs('shieldedPool', 'private_transfer', {
+            proof: '0xp',
+            merkle_root: '0xr',
+        });
+        expect(result['merkle_root']).toBe('0xr');
+        expect(result).not.toHaveProperty('merkle_roots');
+    });
+
     it('maps private_transfer asset, fee and circuit version', () => {
         const result = mapExtrinsicArgs(
             'shieldedPool',
@@ -478,5 +503,48 @@ describe('mapZkEventData — sincronía con los eventos del pallet', () => {
         const result = mapZkEventData('Executed', named({ address: '0xevm' }));
 
         expect(result['from']).toBe('0xevm');
+    });
+});
+
+/**
+ * polkadot.js decodes call args in camelCase (`merkleRoots`, `encryptedMemos`),
+ * PAPI in the metadata's snake_case. A mapper that knew only one form dropped
+ * every multi-word field of the other, in silence.
+ */
+describe('mapExtrinsicArgs — camelCase decoders', () => {
+    const roots = ['0x' + '01'.repeat(32), '0x' + '02'.repeat(32)];
+
+    it('maps a spec-18 private transfer decoded in camelCase', () => {
+        const mapped = mapExtrinsicArgs('shieldedPool', 'privateTransfer', {
+            proof: '0xaa',
+            merkleRoots: roots,
+            nullifiers: ['0xn1', '0xn2'],
+            commitments: ['0xc1', '0xc2'],
+            encryptedMemos: ['0xm1', '0xm2'],
+            assetId: 0,
+            fee: '10',
+            circuitVersion: 3,
+        });
+        expect(mapped).toMatchObject({
+            merkle_roots: roots,
+            encrypted_memos: ['0xm1', '0xm2'],
+            asset_id: 0,
+            circuit_version: 3,
+        });
+    });
+
+    it('maps an older single-root transfer decoded in camelCase', () => {
+        const mapped = mapExtrinsicArgs('shieldedPool', 'privateTransfer', {
+            proof: '0xaa',
+            merkleRoot: roots[0],
+            nullifiers: [],
+            commitments: [],
+            encryptedMemos: [],
+            assetId: 0,
+            fee: '0',
+            circuitVersion: 2,
+        });
+        expect(mapped['merkle_root']).toBe(roots[0]);
+        expect(mapped['merkle_roots']).toBeUndefined();
     });
 });

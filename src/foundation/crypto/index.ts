@@ -7,8 +7,8 @@
  * so they are custody and live in the wallet, not here.
  */
 export { BN254_R, BABYJUB_SUBORDER } from './constants';
-export { unpackUsableViewingKey } from './bjj';
-export { fastMulBase, fastMulPoint } from './bjj-fast';
+export { unpackUsableViewingKey, unpackSubgroupViewingKey } from './bjj';
+export { fastMulBase, fastMulPoint, isInPrimeSubgroup } from './bjj-fast';
 // The capability guards travel with the error they throw: a host that catches
 // `MissingCryptoError` is the same host that wants to check for the capability
 // before it reaches a failure. They inspect `globalThis.crypto` and touch no

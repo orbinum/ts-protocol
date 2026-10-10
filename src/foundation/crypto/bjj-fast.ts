@@ -63,3 +63,14 @@ export function fastMulPoint(point: AffinePoint, scalar: bigint): AffinePoint {
     const { x, y } = BjjPoint.fromAffine({ x: point[0], y: point[1] }).multiplyUnsafe(s).toAffine();
     return [x, y];
 }
+
+/**
+ * Whether an on-curve point lies in the prime-order subgroup: `[N]·P` is the
+ * identity. Unlike `fastMulPoint(P, N)`, which reduces the scalar mod N and so
+ * always returns the identity, this multiplies by N itself.
+ *
+ * The point must already be on the curve (e.g. from `unpackPoint`).
+ */
+export function isInPrimeSubgroup(point: AffinePoint): boolean {
+    return BjjPoint.fromAffine({ x: point[0], y: point[1] }).isTorsionFree();
+}

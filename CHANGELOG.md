@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-10
+
+Note disclosures can no longer claim a value inflated by the field modulus, and
+recipient viewing keys can be required to lie in the prime-order subgroup.
+
+### Added
+
+- `unpackSubgroupViewingKey`: unpacks a recipient viewing key and also refuses
+  points outside the prime-order subgroup (mixed-order `P + T`), on top of
+  `unpackUsableViewingKey`'s identity and small-order checks. `isInPrimeSubgroup`
+  is the underlying `[N]·P = O` test (noble's torsion check).
+
+### Fixed
+
+- `createNoteDisclosureKey` / `decodeNoteDisclosureKey`: every field is
+  range-checked (`value` u128, `assetId` u32, `ownerPk`, `blinding`,
+  `commitment` in `[0, BN254_R)`) and fields must be 0x-prefixed hex of at most
+  64 digits. Poseidon reduces inputs mod r, so a key carrying `value + r` (or a
+  negative value) verified against the same commitment: the holder of a
+  1-planck note could disclose ~2^254. Create throws `RangeError`; decode
+  returns `null`. A disclosure proves knowledge of the preimage, not ownership.
+- `sealPaymentSlip`: the recipient viewing key must be in the prime-order
+  subgroup (`unpackSubgroupViewingKey`); a mixed-order key is refused.
+
 ## [0.8.0] - 2026-10-09
 
 **Breaking** — for runtime spec 18 / transaction version 6: a private transfer

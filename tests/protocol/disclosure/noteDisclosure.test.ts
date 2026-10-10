@@ -6,6 +6,7 @@ import {
     type NoteDisclosure,
     type NoteDisclosureInput,
 } from '../../../src/protocol/disclosure/noteDisclosure';
+import { BN254_R } from '../../../src/foundation/crypto/constants';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -320,5 +321,97 @@ describe('createNoteDisclosureKey / decodeNoteDisclosureKey round-trip', () => {
             .replace(/\//g, '_')
             .replace(/=+$/, '');
         expect(decodeNoteDisclosureKey('orbdisc:' + forged)).toBeNull();
+    });
+});
+
+// ─── Canonical ranges ─────────────────────────────────────────────────────────
+
+describe('canonical ranges', () => {
+    // Poseidon reduces inputs mod r, so each of these hashes to a real note's
+    // commitment (or IS one, shifted by r) — only the range check stands between
+    // a 1-planck note and a disclosure of ~2^254.
+    const base = makeInput({ value: 1n });
+    const toHex = (n: bigint) => '0x' + n.toString(16);
+
+    /** A key carrying `fields` verbatim, bypassing createNoteDisclosureKey's checks. */
+    function rawKey(fields: Partial<Record<'c' | 'val' | 'aid' | 'opk' | 'bld', string>>): string {
+        const payload = {
+            v: 1,
+            c: toHex(base.commitment),
+            val: toHex(base.value),
+            aid: toHex(base.assetId),
+            opk: toHex(base.ownerPk),
+            bld: toHex(base.blinding),
+            ...fields,
+        };
+        const b64 = btoa(JSON.stringify(payload))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+        return 'orbdisc:' + b64;
+    }
+
+    it('the reduced preimages really collide (the attack is live without the checks)', () => {
+        const { value, assetId, ownerPk, blinding, commitment } = base;
+        expect(poseidon4([value + BN254_R, assetId, ownerPk, blinding])).toBe(commitment);
+        expect(poseidon4([value, assetId, ownerPk, blinding + BN254_R])).toBe(commitment);
+        expect(poseidon4([value - BN254_R, assetId, ownerPk, blinding])).toBe(commitment);
+    });
+
+    it('rejects value + r', () => {
+        expect(decodeNoteDisclosureKey(rawKey({ val: toHex(base.value + BN254_R) }))).toBeNull();
+        expect(() => createNoteDisclosureKey({ ...base, value: base.value + BN254_R })).toThrow(
+            RangeError
+        );
+    });
+
+    it('rejects commitment + r', () => {
+        expect(decodeNoteDisclosureKey(rawKey({ c: toHex(base.commitment + BN254_R) }))).toBeNull();
+        expect(() =>
+            createNoteDisclosureKey({ ...base, commitment: base.commitment + BN254_R })
+        ).toThrow(RangeError);
+    });
+
+    it('rejects blinding + r', () => {
+        expect(decodeNoteDisclosureKey(rawKey({ bld: toHex(base.blinding + BN254_R) }))).toBeNull();
+        expect(() =>
+            createNoteDisclosureKey({ ...base, blinding: base.blinding + BN254_R })
+        ).toThrow(RangeError);
+    });
+
+    it('rejects a negative value (≡ value mod r), however it is encoded', () => {
+        const negative = base.value - BN254_R;
+        expect(decodeNoteDisclosureKey(rawKey({ val: negative.toString() }))).toBeNull();
+        expect(decodeNoteDisclosureKey(rawKey({ val: '-' + toHex(-negative) }))).toBeNull();
+        expect(() => createNoteDisclosureKey({ ...base, value: negative })).toThrow(RangeError);
+    });
+
+    it('rejects assetId = 2^32', () => {
+        const assetId = 2n ** 32n;
+        const input = makeInput({ value: 1n, assetId });
+        expect(
+            decodeNoteDisclosureKey(rawKey({ aid: toHex(assetId), c: toHex(input.commitment) }))
+        ).toBeNull();
+        expect(() => createNoteDisclosureKey(input)).toThrow(RangeError);
+    });
+
+    it('rejects value = 2^128', () => {
+        const value = 2n ** 128n;
+        const input = makeInput({ value });
+        expect(
+            decodeNoteDisclosureKey(rawKey({ val: toHex(value), c: toHex(input.commitment) }))
+        ).toBeNull();
+        expect(() => createNoteDisclosureKey(input)).toThrow(RangeError);
+    });
+
+    it('rejects non-hex and oversized field encodings', () => {
+        expect(decodeNoteDisclosureKey(rawKey({ val: '1' }))).toBeNull();
+        expect(decodeNoteDisclosureKey(rawKey({ val: '0x' }))).toBeNull();
+        expect(decodeNoteDisclosureKey(rawKey({ val: '0x' + '0'.repeat(64) + '1' }))).toBeNull();
+        expect(decodeNoteDisclosureKey(rawKey({ val: ['0x1'] as unknown as string }))).toBeNull();
+    });
+
+    it('a well-formed raw key still decodes (the helper is not what rejects)', () => {
+        expect(decodeNoteDisclosureKey(rawKey({}))).not.toBeNull();
     });
 });

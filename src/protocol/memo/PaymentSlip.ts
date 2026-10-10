@@ -45,7 +45,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { packPoint } from '@zk-kit/baby-jubjub';
 import { fastMulBase, fastMulPoint } from '../../foundation/crypto/bjj-fast';
 import { bigintTo32Le, bytesToBigintLE } from '../../foundation/encoding/bytes';
-import { unpackUsableViewingKey } from '../../foundation/crypto/bjj';
+import { unpackSubgroupViewingKey, unpackUsableViewingKey } from '../../foundation/crypto/bjj';
 import { toHex, isHexOfLength, fromHex } from '../../foundation/encoding/hex';
 import { base64UrlEncode, base64UrlDecode } from '../../foundation/encoding/base64url';
 import { bytesToBjjScalar, ENCRYPTED_MEMO_SIZE } from './memoFormat';
@@ -139,8 +139,9 @@ export function sealPaymentSlip(
     }
     // Low-order keys refused, not just malformed ones: a point from the
     // cofactor-8 subgroup collapses the ECDH to at most 8 secrets, and the
-    // sealed slip then opens by trying them — no key required.
-    const ivkPoint = unpackUsableViewingKey(bytesToBigintLE(recipientIvkPacked));
+    // sealed slip then opens by trying them — no key required. Mixed-order
+    // keys are refused too: a recipient key must be in the prime subgroup.
+    const ivkPoint = unpackSubgroupViewingKey(bytesToBigintLE(recipientIvkPacked));
     if (!ivkPoint) throw new Error('PaymentSlip: invalid recipient viewing public key');
 
     // A fresh ephemeral keypair PER SLIP, never a caller-supplied one.

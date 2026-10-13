@@ -26,7 +26,8 @@ export * from './foundation/index';
 
 // ─── PROTOCOL (public) ───────────────────────────────────────────────────────
 // The parts of the note protocol that carry no spend power: note types, the
-// encrypted memo, the payment slip, forest geometry, and circuit versioning.
+// encrypted memo, the payment slip, note disclosure, forest geometry and
+// local Merkle paths.
 // Key derivation, note construction, ephemerals and proving are NOT here — the
 // witness they build carries the spending key, so they live in the wallet.
 

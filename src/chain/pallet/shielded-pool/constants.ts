@@ -23,11 +23,10 @@
  * validator account, which is what lets a user with no public balance spend a
  * shielded note at all.
  *
- * Unshield fixes the fee at exactly this value; a private transfer may pay more
- * (the sender chooses), which is why a reconstructed transfer fee is unknown
- * rather than assumed — see `scanner/history/extrinsicFacts`.
+ * A sender may pay more. The fee is a public argument of the spend, bound by
+ * its proof.
  */
-export const MIN_GASLESS_FEE = 1_000_000_000_000_000n; // 0.001 ORB
+export const MIN_SPEND_FEE = 1_000_000_000_000_000n; // 0.001 ORB
 
 /**
  * Inputs and outputs in one private transfer.
@@ -48,19 +47,15 @@ export const TRANSFER_OUTPUTS = 2;
  */
 export const NATIVE_ASSET_ID = 0n;
 
-/**
- * Whether an asset id refers to the native token.
- *
- * Absent counts as native: a record written before the pool carried multiple
- * assets has no asset id, and every one of those was ORB.
- */
-export function isNativeAsset(assetId: bigint | number | string | null | undefined): boolean {
-    if (assetId === null || assetId === undefined || assetId === '') return true;
+/** Whether an asset id refers to the native token. */
+export function isNativeAsset(assetId: bigint | number | string): boolean {
+    // An unparseable id is not the native asset — treating it as one would fold
+    // an unknown token into an ORB total. Strings are decimal or 0x-hex only:
+    // `BigInt('')` and `BigInt(' 0 ')` both read as zero.
+    if (typeof assetId === 'string' && !/^(\d+|0x[0-9a-f]+)$/i.test(assetId)) return false;
     try {
         return BigInt(assetId) === NATIVE_ASSET_ID;
     } catch {
-        // An unparseable id is not the native asset — treating it as one would
-        // fold an unknown token into an ORB total.
         return false;
     }
 }

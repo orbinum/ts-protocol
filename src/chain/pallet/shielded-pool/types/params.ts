@@ -7,7 +7,7 @@
  *
  * Every `amount` is planck and every hex string is 0x-prefixed. Commitments
  * travel LITTLE-endian: the chain accepts either byte order, and a big-endian
- * one produces a note that no scan can ever find (see `buildShieldParams`).
+ * one produces a note that no scan can ever find (`commitmentHexOf` writes it LE).
  */
 
 /** Parameters for shieldedPool.shield — deposits one note into the pool. */
@@ -94,9 +94,9 @@ export type PrivateTransferParams = {
     /** ZK proof bytes */
     proof: Uint8Array;
     /**
-     * 0x-prefixed root each input is proven against, in input order. Equal for
-     * two notes of one tree; different roots need circuit v3. A dummy input's
-     * slot repeats the real root (every root must be known to the chain).
+     * 0x-prefixed root each input is proven against, in input order: equal for
+     * two notes of one tree, different across trees. A dummy input's slot
+     * repeats the real root (every root must be known to the chain).
      */
     merkleRoots: [string, string];
     /** Asset ID being transferred (public input of the proof) */

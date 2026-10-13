@@ -134,8 +134,7 @@ describe('ismp event types', () => {
 
     it('separates the three states of timeoutTimestamp', () => {
         // Conflating any two is a bug: 0n is "never expires" — upstream's explicit
-        // branch, not 1970 — and a real deadline is a real deadline. A pre-spec-13 block
-        // emits neither, which a consumer sees as the field being absent.
+        // branch, not 1970 — and a real deadline is a real deadline.
         const never: RequestTimedOutEvent = {
             dest: 'KUSAMA-4009',
             commitment: '0x' + '49'.repeat(32),

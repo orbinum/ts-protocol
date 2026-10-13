@@ -8,9 +8,7 @@
  * (`ShieldedPoolModule.privateTransfer` / `unshield`).
  *
  * This class is TRANSPORT only: the precompile address, the signer callback and
- * gas estimation. The calldata itself is built by `shieldedPoolCalldata`, which
- * needs no chain connection — import it directly for custom signing flows
- * rather than constructing a client you never call.
+ * gas estimation. The calldata is built by `shieldedPoolCalldata`.
  */
 import type { EvmClient } from '../EvmClient';
 import type { ShieldParams } from '../../pallet/shielded-pool/types/index';
@@ -22,15 +20,6 @@ export class ShieldedPoolPrecompile {
     private readonly addr = PRECOMPILE_ADDR.SHIELDED_POOL;
 
     constructor(private readonly evm: EvmClient) {}
-
-    /**
-     * Thin delegate to `shieldedPoolCalldata`, kept because it is public API.
-     * New code should import `buildShieldCalldata` directly: it is pure, so
-     * using it needs no `EvmClient` to construct.
-     */
-    buildShieldCalldata(params: ShieldParams): string {
-        return buildShieldCalldata(params);
-    }
 
     /**
      * Deposits tokens into the shielded pool from a payable EVM transaction.

@@ -81,9 +81,6 @@ const MAX_SLIP_ENVELOPE_SIZE = 4096;
  * refuses a long one. It is the bound a TEST checks the wire format against,
  * because a slip that outgrows a QR stops being scannable without failing:
  * the encoder still produces it and no error names the reason.
- *
- * Lived in the note-transfer codec until that was removed; kept here because
- * this is the format that has to fit.
  */
 export const QR_SINGLE_CODE_MAX_CHARS = 1800;
 

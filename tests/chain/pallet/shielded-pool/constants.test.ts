@@ -1,28 +1,28 @@
 /**
  * Runtime parameters the chain enforces.
  *
- * These are values a wallet cannot derive and must not choose. `MIN_GASLESS_FEE`
+ * These are values a wallet cannot derive and must not choose. `MIN_SPEND_FEE`
  * in particular is what `planTransfer`/`planUnshield` need for their required
  * `fee` argument — without it a host recovers the number from a rejected
  * extrinsic, which is a poor way to learn a consensus rule.
  */
 import { describe, it, expect } from 'vitest';
 import {
-    MIN_GASLESS_FEE,
+    MIN_SPEND_FEE,
     TRANSFER_INPUTS,
     TRANSFER_OUTPUTS,
     NATIVE_ASSET_ID,
     isNativeAsset,
 } from '../../../../src/chain/pallet/shielded-pool/constants';
 
-describe('MIN_GASLESS_FEE', () => {
-    it('is 0.001 ORB in planck, matching the runtime MinGaslessFee', () => {
-        expect(MIN_GASLESS_FEE).toBe(1_000_000_000_000_000n);
-        expect(MIN_GASLESS_FEE).toBe(10n ** 18n / 1000n);
+describe('MIN_SPEND_FEE', () => {
+    it('is 0.001 ORB in planck, matching the runtime MinSpendFee', () => {
+        expect(MIN_SPEND_FEE).toBe(1_000_000_000_000_000n);
+        expect(MIN_SPEND_FEE).toBe(10n ** 18n / 1000n);
     });
 
     it('is a bigint — planck exceeds what a number holds exactly', () => {
-        expect(typeof MIN_GASLESS_FEE).toBe('bigint');
+        expect(typeof MIN_SPEND_FEE).toBe('bigint');
     });
 });
 
@@ -43,12 +43,9 @@ describe('isNativeAsset', () => {
         expect(isNativeAsset(NATIVE_ASSET_ID)).toBe(true);
     });
 
-    it('treats a missing id as native', () => {
-        // Records written before the pool carried multiple assets have no asset
-        // id, and every one of those was ORB.
-        expect(isNativeAsset(null)).toBe(true);
-        expect(isNativeAsset(undefined)).toBe(true);
-        expect(isNativeAsset('')).toBe(true);
+    it('does not read an empty or padded string as the native id', () => {
+        expect(isNativeAsset('')).toBe(false);
+        expect(isNativeAsset(' 0 ')).toBe(false);
     });
 
     it('rejects any other asset', () => {

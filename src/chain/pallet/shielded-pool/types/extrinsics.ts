@@ -84,7 +84,7 @@ export type RawTransferOutput = {
 };
 
 /**
- * Call index 1 — `private_transfer` (Unsigned/gasless origin)
+ * Call index 1 — `private_transfer` (unsigned only)
  * Transfers value between notes without revealing sender, recipient or amount.
  * Fee is embedded in the ZK proof: input_sum == output_sum + fee.
  * The fee is credited to the block author's validator account.
@@ -106,7 +106,7 @@ export type PrivateTransferArgs = {
 };
 
 /**
- * Call index 2 — `unshield` (Unsigned/gasless origin)
+ * Call index 2 — `unshield` (unsigned only)
  * Withdraws a note from the pool to a public account.
  * Fee is embedded in the ZK proof: note_value == amount + fee + changeValue.
  * The fee is credited to the block author's validator account.

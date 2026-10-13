@@ -32,10 +32,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   H160; `decodePaymentSlip` and `decodeNoteDisclosureKey` refuse oversized input
   before hashing or parsing.
 
+### Changed
+
+- `MIN_GASLESS_FEE` is renamed `MIN_SPEND_FEE`, after the runtime constant
+  `ShieldedPool.MinSpendFee` it mirrors.
+- `isNativeAsset` takes an id, not an optional one: a missing id is no longer
+  read as native, and neither is an empty or padded string.
+
 ### Removed
 
 - `PrivateTransferInput.commitment`: an input is its nullifier only, so the
   spent note's commitment never reaches the host.
+- `ShieldedPoolPrecompile.buildShieldCalldata`; `shield` and
+  `estimateShieldGas` build the calldata themselves.
+- The precompile ABI types and decoders no call uses: `address`, `bool`,
+  `string`, `bytes32[]`, `address[]`, `bytes[]`, and `decodeAddress`,
+  `decodeBool`, `decodeBytes`, `decodeString`.
+- `RpcV2Module`, unused: `OrbinumClient` exposes `chain` and `privacy`
+  directly.
+- `formatBalance`'s numeric second argument; pass `{ decimals }`.
 
 ## [0.10.0] - 2026-10-13
 

@@ -5,8 +5,7 @@
  * Kept apart from `ShieldedPoolPrecompile` because building calldata needs no
  * chain connection — it is a pure function of the params. The class owns the
  * transport (signer, gas estimation, the precompile address); this owns the
- * bytes. Anyone signing through their own flow can import these directly
- * instead of constructing a client they never call.
+ * bytes.
  *
  * ## Validation lives here
  *

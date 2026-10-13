@@ -307,8 +307,8 @@ export class SubstrateClient {
     }
 
     /**
-     * Wraps pre-built SCALE call bytes (from protocol-core TransactionBuilder)
-     * into a PAPI UnsafeTransaction that can be signed and submitted.
+     * Wraps SCALE-encoded call bytes into a PAPI UnsafeTransaction that can be
+     * signed and submitted.
      */
     async txFromCallData(callData: Uint8Array) {
         return this._papi.getUnsafeApi().txFromCallData(callData);

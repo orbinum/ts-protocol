@@ -64,9 +64,9 @@ export type PalletErrorKind =
  * runtime newer than this SDK loses the hint and nothing else.
  *
  * Four entries are not shielded-pool variants:
- *   - `NullifierAlreadySpent` — raised by the SDK's own pre-flight check in
- *     `ops/spend/lifecycle`, worded to match the pallet so one situation
- *     produces one reaction however it was found;
+ *   - `NullifierAlreadySpent` — raised by a wallet's own pre-flight check
+ *     (wallet-sdk's), worded to match the pallet so one situation produces one
+ *     reaction however it was found;
  *   - `InvalidProof` — the zk-verifier pallet;
  *   - `InsufficientBalance` / `ExistentialDeposit` — the balances pallet,
  *     reached through the same submit.

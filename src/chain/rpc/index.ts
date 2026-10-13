@@ -1,4 +1,3 @@
-export { RpcV2Module } from './RpcV2Module';
 export { ChainModule } from './ChainModule';
 export { PrivacyModule } from './PrivacyModule';
 export { isServerBusyError, SERVER_BUSY_CODE } from './busy';

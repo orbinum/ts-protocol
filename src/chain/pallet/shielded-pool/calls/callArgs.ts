@@ -1,10 +1,11 @@
 /**
  * Shielded-pool call arguments in the shape PAPI's metadata-driven API takes.
  *
- * Kept apart from `ShieldedPoolModule` so a host that submits through its own
- * PAPI flow (to watch `broadcasted`, read the fee from the finalized block)
- * encodes exactly what the module does, instead of a copy of it that drifts
- * when the call changes.
+ * Kept apart from `ShieldedPoolModule` so a host that signs a shield through
+ * its own PAPI flow (to watch `broadcasted`, read the fee from the finalized
+ * block) encodes exactly what the module does: `shieldCallArgs` and
+ * `shieldBatchCallArgs` are public for that. The spend arguments stay internal
+ * — the module submits spends unsigned, and a host has no other way to.
  */
 import { MemoFormat } from '../../../../protocol/memo/index';
 import { accountIdHexToSs58 } from '../../../../foundation/address';

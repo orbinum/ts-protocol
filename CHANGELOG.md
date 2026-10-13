@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-13
+
+Hardening for runtime spec 19: spends can no longer be signed through this SDK,
+spend arguments are validated before encoding, the RPC transport and decoders
+are bounded, and connecting to a runtime older than spec 19 fails. Legacy and
+dead code is gone.
+
 ### Security
 
 - `signAndSubmitTx` and `SubstrateClient.signAndSubmit` refuse to sign a

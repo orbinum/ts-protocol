@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `signAndSubmitTx` and `SubstrateClient.signAndSubmit` refuse to sign a
+  `ShieldedPool.private_transfer` or `unshield`, alone or nested in another
+  call (a batch, `Sudo.sudo`): the runtime rejects a signed spend only after
+  the extrinsic, and with it the signer next to the nullifiers, reached the
+  node. Hosts with their own signing path can apply the same check with the
+  exported `assertNotSignedSpend`.
+- `unshieldCallArgs` / `privateTransferCallArgs` validate every argument before
+  encoding (`assertUnshieldParams`, `assertPrivateTransferParams`): 32-byte
+  nullifiers and commitments, canonical roots, exactly two inputs and two
+  outputs, a non-empty proof, u32 / u128 ranges.
+- `OrbinumClient.connect` refuses a runtime older than `MIN_SPEC_VERSION` (19)
+  and closes the connection it opened.
+- JSON-RPC over HTTP: every attempt has a timeout (`timeoutMs`, default 30 s),
+  a server `Retry-After` is capped at `maxBackoffMs`, and a batch response
+  that is not an array is refused.
+- `accountIdHexToSs58` refuses non-hex input instead of encoding it as zero
+  bytes; `hexToBigint` accepts only 0x-prefixed hex.
+- Bounded inputs: decoded runtimes are cached up to 16 at a time;
+  `EvmExplorer.getLatestBlocks` / `getTransactionsByAddress` read at most 1000
+  blocks; `getTokenTransfers` / `getTokenBalance` refuse a holder that is not an
+  H160; `decodePaymentSlip` and `decodeNoteDisclosureKey` refuse oversized input
+  before hashing or parsing.
+
+### Removed
+
+- `PrivateTransferInput.commitment`: an input is its nullifier only, so the
+  spent note's commitment never reaches the host.
+
 ## [0.10.0] - 2026-10-13
 
 **Breaking** — for runtime spec 19 / transaction version 7: the relayer layer

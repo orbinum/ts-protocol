@@ -8,6 +8,7 @@ import type { RawRuntimeVersion } from './types/raw';
 import { RuntimeDecoders, type DynamicBuilder, type ExtrinsicDecoder } from './runtimeDecoders';
 import { toEventRecords } from './eventRecords';
 import { extractAuthorFromLogs, timestampFromExtrinsics } from './blockInfo';
+import { assertNotSignedSpend } from '../pallet/shielded-pool/calls/unsignedOnly';
 
 export type { DynamicBuilder, ExtrinsicDecoder } from './runtimeDecoders';
 
@@ -338,13 +339,15 @@ export class SubstrateClient {
     }
 
     /**
-     * Convenience: wrap raw call bytes and sign+submit in one step.
+     * Convenience: wrap raw call bytes and sign+submit in one step. Refuses a
+     * shielded-pool spend (see `assertNotSignedSpend`).
      */
     async signAndSubmit(
         callData: Uint8Array,
         signer: SubstrateSigner
     ): Promise<TxFinalizedPayload> {
         const tx = await this.txFromCallData(callData);
+        assertNotSignedSpend(tx);
         return this.trackTx(tx.createAndSubmit(signer));
     }
 

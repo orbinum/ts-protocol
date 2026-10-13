@@ -10,4 +10,7 @@ export {
     assertMerkleRoots,
     assertShieldParams,
     assertClaimFeesParams,
-} from './validation';
+    assertUnshieldParams,
+    assertPrivateTransferParams,
+} from './validation/index';
+export { assertNotSignedSpend, isOrWrapsUnsignedOnlyCall } from './unsignedOnly';

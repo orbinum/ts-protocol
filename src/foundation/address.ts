@@ -203,12 +203,10 @@ export function accountIdHexToSs58(hex: string): string | null {
     if (!hex) return null;
     try {
         const h = hex.startsWith('0x') ? hex.slice(2) : hex;
-        if (h.length !== 64) return null;
-        const bytes = new Uint8Array(32);
-        for (let i = 0; i < 32; i++) {
-            bytes[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
-        }
-        return encodeAddress(bytes);
+        // `parseInt` would read a non-hex pair as NaN and store it as 0, so a
+        // typo would encode to a different, valid account.
+        if (!/^[0-9a-fA-F]{64}$/.test(h)) return null;
+        return encodeAddress(fromHex(h));
     } catch {
         return null;
     }

@@ -66,4 +66,31 @@ describe('RuntimeDecoders', () => {
         await expect(decoders.builder('0xbad')).rejects.toThrow('Unknown block');
         expect(await decoders.builder('0xbad')).toBe('builder');
     });
+
+    it('drops the oldest runtime once 16 are cached', async () => {
+        // A node that claims a new spec for every block must not grow the cache.
+        let spec = 0;
+        const blockSpec = new Map<string, number>();
+        const call = vi.fn(async (method: string, params: unknown[]) => {
+            const hash = params[0] as string;
+            if (method === 'state_getRuntimeVersion') {
+                if (!blockSpec.has(hash)) blockSpec.set(hash, ++spec);
+                return { specVersion: blockSpec.get(hash) };
+            }
+            return '0x6d657461';
+        }) as unknown as <T>(m: string, p: unknown[]) => Promise<T>;
+        const decoders = new RuntimeDecoders(call, vi.fn());
+        const metadataFetches = () =>
+            (call as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+                (c) => c[0] === 'state_getMetadata'
+            ).length;
+
+        for (let i = 0; i < 17; i++) await decoders.builder(`0x${i}`);
+        expect(metadataFetches()).toBe(17);
+
+        await decoders.builder('0x16'); // newest: still cached
+        expect(metadataFetches()).toBe(17);
+        await decoders.builder('0x0'); // oldest: evicted, fetched again
+        expect(metadataFetches()).toBe(18);
+    });
 });

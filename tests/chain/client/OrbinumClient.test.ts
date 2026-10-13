@@ -24,7 +24,7 @@ vi.mock('../../../src/chain/evm/explorer/EvmExplorer', () => ({
 
 function makeSubstrate(): SubstrateClient {
     return {
-        request: vi.fn().mockResolvedValue({}),
+        request: vi.fn().mockResolvedValue({ specVersion: 19 }),
         unsafe: { tx: {} },
         destroy: vi.fn(),
         getChainInfo: vi.fn(),
@@ -62,6 +62,17 @@ beforeEach(() => {
 // ─── OrbinumClient.connect ────────────────────────────────────────────────────
 
 describe('OrbinumClient.connect', () => {
+    it('refuses a runtime older than spec 19 and closes the connection', async () => {
+        const substrate = makeSubstrate();
+        vi.mocked(substrate.request).mockResolvedValue({ specVersion: 18 });
+        vi.mocked(SubstrateClient.connect).mockResolvedValue(substrate);
+
+        await expect(OrbinumClient.connect({ substrateWs: 'ws://localhost:9944' })).rejects.toThrow(
+            /spec 18.*spec 19 or later/
+        );
+        expect(substrate.destroy).toHaveBeenCalledTimes(1);
+    });
+
     it('returns an OrbinumClient instance', async () => {
         const substrate = makeSubstrate();
         vi.mocked(SubstrateClient.connect).mockResolvedValue(substrate);

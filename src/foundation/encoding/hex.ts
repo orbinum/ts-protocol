@@ -79,8 +79,14 @@ export function hexToNumber(hex: string): number {
 
 /**
  * Converts a 0x-prefixed hex string (as returned by JSON-RPC) to a bigint.
+ *
+ * Hex only: a bare `BigInt` also accepts decimal, octal and binary strings, so
+ * a server's `"100"` would read as one hundred instead of being refused.
  */
 export function hexToBigint(hex: string): bigint {
+    if (!/^0x[0-9a-fA-F]+$/i.test(hex)) {
+        throw new Error(`Invalid hex quantity: "${hex}"`);
+    }
     return BigInt(hex);
 }
 

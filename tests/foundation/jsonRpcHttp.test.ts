@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { jsonRpcBatch, wsUrlToHttp } from '../../src/foundation/jsonRpcHttp';
+import { batchResults, jsonRpcBatch, wsUrlToHttp } from '../../src/foundation/jsonRpcHttp';
 
 const URL = 'https://node.example/rpc';
 
@@ -130,6 +130,35 @@ describe('jsonRpcBatch', () => {
         expect(f).toHaveBeenCalledTimes(2);
     });
 
+    it('caps a server Retry-After at maxBackoffMs', async () => {
+        vi.useFakeTimers();
+        const f = vi
+            .fn()
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 429,
+                statusText: 'slow down',
+                headers: { get: (k: string) => (k === 'retry-after' ? '86400' : null) },
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => [{ jsonrpc: '2.0', id: 0, result: 'ok' }],
+            });
+        vi.stubGlobal('fetch', f);
+
+        const p = jsonRpcBatch<string[]>(URL, [{ method: 'a' }], { maxBackoffMs: 1000 });
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(await p).toEqual(['ok']);
+        expect(f).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives every attempt a timeout signal', async () => {
+        const f = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+        vi.stubGlobal('fetch', f);
+        await jsonRpcBatch(URL, [{ method: 'a' }]);
+        expect(f.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
+    });
+
     it('gives up after maxRetries and throws', async () => {
         vi.useFakeTimers();
         mockStatus(429);
@@ -146,5 +175,21 @@ describe('wsUrlToHttp', () => {
         expect(wsUrlToHttp('wss://node.example/rpc')).toBe('https://node.example/rpc');
         expect(wsUrlToHttp('ws://localhost:9944')).toBe('http://localhost:9944');
         expect(wsUrlToHttp('https://already.http')).toBe('https://already.http');
+    });
+});
+
+describe('batchResults', () => {
+    it('orders results by id and nulls missing or failed calls', () => {
+        const body = [
+            { jsonrpc: '2.0', id: 2, result: 'c' },
+            { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse' } },
+            { jsonrpc: '2.0', id: 0, result: 'a' },
+        ];
+        expect(batchResults(body, [0, 1, 2])).toEqual(['a', null, 'c']);
+    });
+
+    it('refuses a body that is not an array', () => {
+        expect(() => batchResults({ error: 'x' }, [0])).toThrow(/array/);
+        expect(() => batchResults(null, [0])).toThrow(/array/);
     });
 });

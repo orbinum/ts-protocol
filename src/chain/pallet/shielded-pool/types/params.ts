@@ -50,7 +50,7 @@ export type UnshieldParams = {
     assetId: number;
     /** Net amount recipient receives (planck) */
     amount: bigint;
-    /** SS58 or 0x-prefixed 32-byte address */
+    /** Recipient AccountId32 as 0x-prefixed 32-byte hex. */
     recipientAddress: string;
     /** Spend fee in planck (default 0n; note_value == amount + fee + changeValue in circuit). */
     fee?: bigint;
@@ -70,11 +70,13 @@ export type UnshieldParams = {
     circuitVersion: number;
 };
 
+/**
+ * One spent note, by nullifier only. Its commitment never leaves the wallet:
+ * the proof hides which leaf it is, and the call has no field for it.
+ */
 export type PrivateTransferInput = {
     /** 0x-prefixed nullifier hex */
     nullifier: string;
-    /** 0x-prefixed commitment hex */
-    commitment: string;
 };
 
 export type PrivateTransferOutput = {
@@ -85,7 +87,7 @@ export type PrivateTransferOutput = {
 };
 
 export type PrivateTransferParams = {
-    /** Input notes being spent (nullifier + commitment each). */
+    /** Input notes being spent, one nullifier each. */
     inputs: PrivateTransferInput[];
     /** Output notes being created (commitment + encrypted memo each). */
     outputs: PrivateTransferOutput[];

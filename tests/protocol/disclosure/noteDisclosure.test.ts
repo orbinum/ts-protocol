@@ -131,6 +131,10 @@ describe('portability', () => {
 // ─── decodeNoteDisclosureKey ──────────────────────────────────────────────────
 
 describe('decodeNoteDisclosureKey', () => {
+    it('refuses an oversized key before parsing it', () => {
+        expect(decodeNoteDisclosureKey('orbdisc:' + 'A'.repeat(4096))).toBeNull();
+    });
+
     it('decodes a valid key and returns all fields', () => {
         const input = makeInput();
         const key = createNoteDisclosureKey(input);

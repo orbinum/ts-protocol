@@ -6,7 +6,7 @@
  */
 import type { SubstrateClient } from '../../../substrate/SubstrateClient';
 import { accountIdHexToSs58, addressToAccountIdHex } from '../../../../foundation/address';
-import { assertU32 } from '../calls/validation';
+import { assertU32 } from '../calls/validation/index';
 
 /** The slice of PAPI's UnsafeApi the shielded-pool reads use. */
 type ShieldedPoolReads = {

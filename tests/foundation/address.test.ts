@@ -237,6 +237,11 @@ describe('evmToSubstrate', () => {
 // ─── accountIdHexToSs58 ───────────────────────────────────────────────────────
 
 describe('accountIdHexToSs58', () => {
+    it('refuses 64 characters that are not all hex', () => {
+        expect(accountIdHexToSs58('0x' + 'zz'.repeat(32))).toBeNull();
+        expect(accountIdHexToSs58('0x' + '12'.repeat(31) + 'g1')).toBeNull();
+    });
+
     it('encodes 32-byte hex to SS58', () => {
         const hex = substrateSs58ToAccountIdHex(ALICE_SS58);
         expect(hex).not.toBeNull();

@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
     assertClaimFeesParams,
     assertMerkleRoots,
+    assertPrivateTransferParams,
     assertShieldParams,
+    assertUnshieldParams,
 } from '../../../../src/chain/pallet/shielded-pool/calls/index';
 import { BN254_R } from '../../../../src/foundation/crypto/constants';
 import { commitmentHexOf } from '../../../../src/foundation/encoding/bytes';
@@ -94,6 +96,77 @@ describe('assertShieldParams', () => {
     ])('refuses a bad %s', (field, over) => {
         expect(() => assertShieldParams({ ...valid, ...over }, 'shield')).toThrow(
             `shield.${field}`
+        );
+    });
+});
+
+describe('assertUnshieldParams', () => {
+    const ok = {
+        proof: new Uint8Array([1]),
+        merkleRoot: commitmentHexOf(1n),
+        nullifier: '0x' + 'ab'.repeat(32),
+        assetId: 0,
+        amount: 5n,
+        recipientAddress: '0x' + '12'.repeat(32),
+        fee: 1n,
+        changeCommitment: '0x' + 'cd'.repeat(32),
+        circuitVersion: 3,
+    };
+
+    it('accepts a well-formed unshield', () => {
+        expect(() => assertUnshieldParams(ok, 'u')).not.toThrow();
+    });
+
+    it.each([
+        ['proof', { proof: new Uint8Array(0) }, /proof/],
+        ['root', { merkleRoot: '0x' + 'ff'.repeat(32) }, /canonical/],
+        ['nullifier', { nullifier: '0x12' }, /nullifier.*32-byte/],
+        ['amount', { amount: 0n }, /amount/],
+        ['fee', { fee: -1n }, /fee/],
+        ['fee width', { fee: 1n << 128n }, /fee/],
+        ['change', { changeCommitment: 'zz' }, /changeCommitment/],
+        ['asset', { assetId: -1 }, /assetId/],
+    ])('refuses a bad %s', (_, over, err) => {
+        expect(() => assertUnshieldParams({ ...ok, ...over }, 'u')).toThrow(err);
+    });
+});
+
+describe('assertPrivateTransferParams', () => {
+    const memo = new Uint8Array(180);
+    const ok = {
+        proof: new Uint8Array([1]),
+        merkleRoots: [commitmentHexOf(1n), commitmentHexOf(2n)] as [string, string],
+        inputs: [{ nullifier: '0x' + 'aa'.repeat(32) }, { nullifier: '0x' + 'bb'.repeat(32) }],
+        outputs: [
+            { commitment: '0x' + 'cc'.repeat(32), encryptedMemo: memo },
+            { commitment: '0x' + 'dd'.repeat(32), encryptedMemo: memo },
+        ],
+        assetId: 0,
+        fee: 0n,
+        circuitVersion: 3,
+    };
+
+    it('accepts a well-formed transfer', () => {
+        expect(() => assertPrivateTransferParams(ok, 't')).not.toThrow();
+    });
+
+    it('refuses any arity but two inputs and two outputs', () => {
+        expect(() =>
+            assertPrivateTransferParams({ ...ok, inputs: ok.inputs.slice(0, 1) }, 't')
+        ).toThrow(/2 inputs/);
+        expect(() =>
+            assertPrivateTransferParams({ ...ok, outputs: [...ok.outputs, ok.outputs[0]!] }, 't')
+        ).toThrow(/2 outputs/);
+    });
+
+    it('refuses a malformed nullifier or commitment', () => {
+        const badIn = [{ nullifier: '0x' }, ok.inputs[1]!];
+        expect(() => assertPrivateTransferParams({ ...ok, inputs: badIn }, 't')).toThrow(
+            /inputs\[0\]\.nullifier/
+        );
+        const badOut = [ok.outputs[0]!, { commitment: '0x00', encryptedMemo: memo }];
+        expect(() => assertPrivateTransferParams({ ...ok, outputs: badOut }, 't')).toThrow(
+            /outputs\[1\]\.commitment/
         );
     });
 });

@@ -81,7 +81,7 @@ const SHIELD_PARAMS = {
 
 const UNSHIELD_PARAMS = {
     proof: new Uint8Array(32),
-    merkleRoot: '0x' + 'cd'.repeat(32),
+    merkleRoot: '0x' + 'cd'.repeat(31) + '00',
     nullifier: '0x' + 'ef'.repeat(32),
     assetId: 0,
     amount: 500n,
@@ -91,10 +91,7 @@ const UNSHIELD_PARAMS = {
 
 const TRANSFER_PARAMS = {
     assetId: 0,
-    inputs: [
-        { nullifier: '0x' + 'aa'.repeat(32), commitment: '0x' + 'bb'.repeat(32) },
-        { nullifier: '0x' + 'cc'.repeat(32), commitment: '0x' + 'dd'.repeat(32) },
-    ],
+    inputs: [{ nullifier: '0x' + 'aa'.repeat(32) }, { nullifier: '0x' + 'cc'.repeat(32) }],
     outputs: [
         { commitment: '0x' + 'ee'.repeat(32), encryptedMemo: new Uint8Array(180) },
         { commitment: '0x' + 'ff'.repeat(32), encryptedMemo: new Uint8Array(180) },
@@ -225,7 +222,10 @@ describe('ShieldedPoolModule.privateTransfer', () => {
         const mod = new ShieldedPoolModule(bareTxClient('private_transfer'));
         const params = {
             ...TRANSFER_PARAMS,
-            outputs: [{ commitment: '0x' + 'ee'.repeat(32), encryptedMemo: new Uint8Array(50) }],
+            outputs: [
+                TRANSFER_PARAMS.outputs[0]!,
+                { commitment: '0x' + 'ee'.repeat(32), encryptedMemo: new Uint8Array(50) },
+            ],
         };
         await expect(mod.privateTransfer(params)).rejects.toThrow(
             /EncryptedMemo: invalid size.*expected 180 bytes, got 50/

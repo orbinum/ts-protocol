@@ -2,6 +2,7 @@ import type { TxFinalizedPayload } from 'polkadot-api';
 import type { SignerTxCreator as SubstrateSigner } from 'polkadot-api/tx-creator';
 import type { SubstrateClient } from './substrate/SubstrateClient';
 import type { TxResult } from './client/types';
+import { assertNotSignedSpend } from './pallet/shielded-pool/calls/unsignedOnly';
 
 /**
  * Transaction options for PAPI's UnsafeApi (no typed asset).
@@ -121,6 +122,8 @@ export interface UnsafeTx {
         }): unknown;
     };
     getBareTx(): Promise<Uint8Array>;
+    /** The call as PAPI decoded it: `{ type: pallet, value: { type: call, value: args } }`. */
+    decodedCall: unknown;
 }
 
 export function callUnsafeTx(txEntry: unknown, ...args: unknown[]): UnsafeTx {
@@ -128,7 +131,8 @@ export function callUnsafeTx(txEntry: unknown, ...args: unknown[]): UnsafeTx {
 }
 
 /**
- * Signs and submits, resolving on finalization.
+ * Signs and submits, resolving on finalization. Refuses a shielded-pool spend
+ * (`assertNotSignedSpend`) before the signer sees it.
  *
  * With `onBroadcast` the tx goes through `createSubmitAndWatch`, whose event
  * stream is the only place the mempool acknowledgement is visible; without it
@@ -140,6 +144,11 @@ export function signAndSubmitTx(
     signer: SubstrateSigner,
     options?: SubmitOptions
 ): Promise<TxResult> {
+    try {
+        assertNotSignedSpend(tx);
+    } catch (e) {
+        return Promise.reject(e);
+    }
     const { onBroadcast, ...txOptions } = options ?? {};
     const opts = Object.keys(txOptions).length > 0 ? (txOptions as UnsafeTxOptions) : undefined;
 

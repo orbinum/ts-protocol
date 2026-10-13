@@ -116,15 +116,27 @@ export type AssetUnverifiedEvent = {
     assetId: number;
 };
 
+// ─── Spend fees ───────────────────────────────────────────────────────────────
+
 /**
- * Emitted by `claim_relay_fees()` (runtime spec 16+).
- * Rust variant: `RelayFeesClaimed { who, to, asset_id, amount }`
+ * Emitted by every spend with a non-zero fee: the fee is
+ * credited to the block author's validator account, pending until claimed.
+ * Rust variant: `FeeCredited { validator, asset_id, amount }`
  */
-export type RelayFeesClaimedEvent = {
-    /** SS58 AccountId whose pending fees were spent. */
-    who: string;
-    /** SS58 AccountId paid: the account of `who`'s registered relay address, or `who`. */
-    to: string;
+export type FeeCreditedEvent = {
+    /** SS58 AccountId of the validator that authored the block. */
+    validator: string;
+    assetId: number;
+    amount: bigint;
+};
+
+/**
+ * Emitted by `claim_fees()`.
+ * Rust variant: `FeesClaimed { validator, asset_id, amount }`
+ */
+export type FeesClaimedEvent = {
+    /** SS58 AccountId of the validator paid its own pending fees. */
+    validator: string;
     assetId: number;
     amount: bigint;
 };
@@ -147,4 +159,5 @@ export type ShieldedPoolEvent =
     | { type: 'AssetRegistered'; data: AssetRegisteredEvent }
     | { type: 'AssetVerified'; data: AssetVerifiedEvent }
     | { type: 'AssetUnverified'; data: AssetUnverifiedEvent }
-    | { type: 'RelayFeesClaimed'; data: RelayFeesClaimedEvent };
+    | { type: 'FeeCredited'; data: FeeCreditedEvent }
+    | { type: 'FeesClaimed'; data: FeesClaimedEvent };

@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi } from 'vitest';
 import { ShieldedPoolModule } from '../../../../src/chain/pallet/shielded-pool/ShieldedPoolModule';
 import type { SubstrateClient } from '../../../../src/chain/substrate/SubstrateClient';
+import type { SubmitOptions } from '../../../../src/chain/tx';
 
 /** A stand-in shield proof: the calls carry it, nothing here verifies it. */
 const SHIELD_PROOF = new Uint8Array(128).fill(1);
@@ -43,6 +44,31 @@ function txClient(
 
 const mockSigner = {} as never;
 
+// ─── bareTx helpers ───────────────────────────────────────────────────────────
+
+/** Stub that returns a tx with getBareTx (unsigned path). */
+function bareTxClient(call: string): SubstrateClient & {
+    _txEntry: ReturnType<typeof vi.fn>;
+    _getBareTx: ReturnType<typeof vi.fn>;
+    _submitUnsignedAndWatch: ReturnType<typeof vi.fn>;
+} {
+    const submitUnsignedAndWatch = vi.fn().mockResolvedValue(FINALIZED_OK);
+    const getBareTx = vi.fn().mockResolvedValue('0xbaretx');
+    const txEntry = vi.fn().mockReturnValue({ getBareTx });
+    return {
+        request: vi.fn(),
+        unsafe: { tx: { ShieldedPool: { [call]: txEntry } } },
+        submitUnsignedAndWatch,
+        _txEntry: txEntry,
+        _getBareTx: getBareTx,
+        _submitUnsignedAndWatch: submitUnsignedAndWatch,
+    } as unknown as SubstrateClient & {
+        _txEntry: ReturnType<typeof vi.fn>;
+        _getBareTx: ReturnType<typeof vi.fn>;
+        _submitUnsignedAndWatch: ReturnType<typeof vi.fn>;
+    };
+}
+
 // Common test params
 const SHIELD_PARAMS = {
     assetId: 0,
@@ -60,7 +86,7 @@ const UNSHIELD_PARAMS = {
     assetId: 0,
     amount: 500n,
     recipientAddress: '0x' + '12'.repeat(32),
-    circuitVersion: 1,
+    circuitVersion: 3,
 };
 
 const TRANSFER_PARAMS = {
@@ -75,7 +101,7 @@ const TRANSFER_PARAMS = {
     ],
     proof: new Uint8Array(32),
     merkleRoots: ['0x' + 'a1'.repeat(31) + '00', '0x' + 'a2'.repeat(31) + '00'] as [string, string],
-    circuitVersion: 1,
+    circuitVersion: 3,
 };
 
 // ─── shield ───────────────────────────────────────────────────────────────────
@@ -160,38 +186,22 @@ describe('ShieldedPoolModule.shield', () => {
 
 describe('ShieldedPoolModule.unshield', () => {
     it('returns a TxResult on success', async () => {
-        const mod = new ShieldedPoolModule(txClient('unshield'));
-        const result = await mod.unshield(UNSHIELD_PARAMS, mockSigner);
+        const mod = new ShieldedPoolModule(bareTxClient('unshield'));
+        const result = await mod.unshield(UNSHIELD_PARAMS);
         expect(result.ok).toBe(true);
         expect(result.txHash).toBe('0xabc');
     });
 
     it('calls the unshield tx entry exactly once', async () => {
-        const client = txClient('unshield');
-        const mod = new ShieldedPoolModule(client);
-        await mod.unshield(UNSHIELD_PARAMS, mockSigner);
+        const client = bareTxClient('unshield');
+        await new ShieldedPoolModule(client).unshield(UNSHIELD_PARAMS);
         expect(client._txEntry).toHaveBeenCalledTimes(1);
-    });
-
-    it('calls createAndSubmit with the signer', async () => {
-        const client = txClient('unshield');
-        const mod = new ShieldedPoolModule(client);
-        await mod.unshield(UNSHIELD_PARAMS, mockSigner);
-        expect(client._signAndSubmit).toHaveBeenCalledWith(mockSigner);
-    });
-
-    it('returns error info when tx fails', async () => {
-        const client = txClient('unshield', FINALIZED_ERR);
-        const mod = new ShieldedPoolModule(client);
-        const result = await mod.unshield(UNSHIELD_PARAMS, mockSigner);
-        expect(result.ok).toBe(false);
-        expect((result as { error?: string }).error).toBe('Module');
     });
 
     it('throws when pallet is missing', async () => {
         const client = { request: vi.fn(), unsafe: { tx: {} } } as unknown as SubstrateClient;
         const mod = new ShieldedPoolModule(client);
-        await expect(mod.unshield(UNSHIELD_PARAMS, mockSigner)).rejects.toThrow(/ShieldedPool/);
+        await expect(mod.unshield(UNSHIELD_PARAMS)).rejects.toThrow(/ShieldedPool/);
     });
 });
 
@@ -199,41 +209,25 @@ describe('ShieldedPoolModule.unshield', () => {
 
 describe('ShieldedPoolModule.privateTransfer', () => {
     it('returns a TxResult on success', async () => {
-        const mod = new ShieldedPoolModule(txClient('private_transfer'));
-        const result = await mod.privateTransfer(TRANSFER_PARAMS, mockSigner);
+        const mod = new ShieldedPoolModule(bareTxClient('private_transfer'));
+        const result = await mod.privateTransfer(TRANSFER_PARAMS);
         expect(result.ok).toBe(true);
         expect(result.txHash).toBe('0xabc');
     });
 
     it('calls the privateTransfer tx entry exactly once', async () => {
-        const client = txClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
-        await mod.privateTransfer(TRANSFER_PARAMS, mockSigner);
+        const client = bareTxClient('private_transfer');
+        await new ShieldedPoolModule(client).privateTransfer(TRANSFER_PARAMS);
         expect(client._txEntry).toHaveBeenCalledTimes(1);
     });
 
-    it('calls createAndSubmit with the signer', async () => {
-        const client = txClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
-        await mod.privateTransfer(TRANSFER_PARAMS, mockSigner);
-        expect(client._signAndSubmit).toHaveBeenCalledWith(mockSigner);
-    });
-
-    it('returns error info when tx fails', async () => {
-        const client = txClient('private_transfer', FINALIZED_ERR);
-        const mod = new ShieldedPoolModule(client);
-        const result = await mod.privateTransfer(TRANSFER_PARAMS, mockSigner);
-        expect(result.ok).toBe(false);
-    });
-
     it('throws when an output encryptedMemo has wrong size', async () => {
-        const client = txClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
+        const mod = new ShieldedPoolModule(bareTxClient('private_transfer'));
         const params = {
             ...TRANSFER_PARAMS,
             outputs: [{ commitment: '0x' + 'ee'.repeat(32), encryptedMemo: new Uint8Array(50) }],
         };
-        await expect(mod.privateTransfer(params, mockSigner)).rejects.toThrow(
+        await expect(mod.privateTransfer(params)).rejects.toThrow(
             /EncryptedMemo: invalid size.*expected 180 bytes, got 50/
         );
     });
@@ -244,7 +238,7 @@ describe('ShieldedPoolModule.privateTransfer', () => {
             unsafe: { tx: { ShieldedPool: {} } },
         } as unknown as SubstrateClient;
         const mod = new ShieldedPoolModule(client);
-        await expect(mod.privateTransfer(TRANSFER_PARAMS, mockSigner)).rejects.toThrow(
+        await expect(mod.privateTransfer(TRANSFER_PARAMS)).rejects.toThrow(
             /Call "ShieldedPool.private_transfer" not found/
         );
     });
@@ -370,119 +364,96 @@ describe('ShieldedPoolModule.shieldBatch', () => {
     });
 });
 
-// ─── bareTx helpers ───────────────────────────────────────────────────────────
+// ─── spends are never signed ──────────────────────────────────────────────────
 
-/** Stub that returns a tx with getBareTx (unsigned path). */
-function bareTxClient(call: string): SubstrateClient & {
-    _txEntry: ReturnType<typeof vi.fn>;
-    _getBareTx: ReturnType<typeof vi.fn>;
-    _submitUnsignedAndWatch: ReturnType<typeof vi.fn>;
-} {
-    const submitUnsignedAndWatch = vi.fn().mockResolvedValue(FINALIZED_OK);
-    const getBareTx = vi.fn().mockResolvedValue('0xbaretx');
-    const txEntry = vi.fn().mockReturnValue({ getBareTx });
-    return {
-        request: vi.fn(),
-        unsafe: { tx: { ShieldedPool: { [call]: txEntry } } },
-        submitUnsignedAndWatch,
-        _txEntry: txEntry,
-        _getBareTx: getBareTx,
-        _submitUnsignedAndWatch: submitUnsignedAndWatch,
-    } as unknown as SubstrateClient & {
-        _txEntry: ReturnType<typeof vi.fn>;
-        _getBareTx: ReturnType<typeof vi.fn>;
-        _submitUnsignedAndWatch: ReturnType<typeof vi.fn>;
-    };
-}
-
-// ─── unshield – fee & bare tx ─────────────────────────────────────────────────
-
-describe('ShieldedPoolModule.unshield – fee arg', () => {
-    it('passes default fee 0n as named field to tx entry', async () => {
-        const client = txClient('unshield');
-        const mod = new ShieldedPoolModule(client);
-        await mod.unshield(UNSHIELD_PARAMS, mockSigner);
-        const [arg] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
-        expect(arg['fee']).toBe(0n);
+describe('ShieldedPoolModule spends – unsigned only', () => {
+    it('takes no signer: the second argument is the submit options', () => {
+        // A signer parameter would be a signed path the runtime refuses (BadOrigin).
+        expect(ShieldedPoolModule.prototype.unshield.length).toBeLessThanOrEqual(2);
+        expect(ShieldedPoolModule.prototype.privateTransfer.length).toBeLessThanOrEqual(2);
+        type UnshieldArgs = Parameters<ShieldedPoolModule['unshield']>;
+        type TransferArgs = Parameters<ShieldedPoolModule['privateTransfer']>;
+        expectTypeOf<UnshieldArgs[1]>().toEqualTypeOf<SubmitOptions | undefined>();
+        expectTypeOf<TransferArgs[1]>().toEqualTypeOf<SubmitOptions | undefined>();
     });
 
-    it('passes explicit fee as named field to tx entry', async () => {
-        const client = txClient('unshield');
-        const mod = new ShieldedPoolModule(client);
-        await mod.unshield({ ...UNSHIELD_PARAMS, fee: 1_000_000_000_000_000n }, mockSigner);
-        const [arg] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
-        expect(arg['fee']).toBe(1_000_000_000_000_000n);
-    });
-
-    it('submits as bare (unsigned) tx when no signer is provided', async () => {
+    it('submits unshield bare, with onBroadcast from the options', async () => {
         const client = bareTxClient('unshield');
-        const mod = new ShieldedPoolModule(client);
-        const result = await mod.unshield(UNSHIELD_PARAMS);
+        const onBroadcast = vi.fn();
+        const result = await new ShieldedPoolModule(client).unshield(UNSHIELD_PARAMS, {
+            onBroadcast,
+        });
         expect(client._getBareTx).toHaveBeenCalledOnce();
         expect(client._submitUnsignedAndWatch).toHaveBeenCalledWith('0xbaretx');
-        expect(result.ok).toBe(true);
+        expect(onBroadcast).toHaveBeenCalledOnce();
+        expect(result.blockNumber).toBe(42);
     });
 
-    it('returns TxResult from bare tx submission', async () => {
-        const client = bareTxClient('unshield');
-        const mod = new ShieldedPoolModule(client);
-        const result = await mod.unshield(UNSHIELD_PARAMS);
-        expect(result.txHash).toBe('0xabc');
+    it('submits privateTransfer bare, with onBroadcast from the options', async () => {
+        const client = bareTxClient('private_transfer');
+        const onBroadcast = vi.fn();
+        const result = await new ShieldedPoolModule(client).privateTransfer(TRANSFER_PARAMS, {
+            onBroadcast,
+        });
+        expect(client._getBareTx).toHaveBeenCalledOnce();
+        expect(client._submitUnsignedAndWatch).toHaveBeenCalledWith('0xbaretx');
+        expect(onBroadcast).toHaveBeenCalledOnce();
         expect(result.blockNumber).toBe(42);
     });
 });
 
-// ─── privateTransfer – fee, assetId & bare tx ─────────────────────────────────
+// ─── unshield – fee ───────────────────────────────────────────────────────────
 
-describe('ShieldedPoolModule.privateTransfer – fee & assetId args', () => {
+describe('ShieldedPoolModule.unshield – fee arg', () => {
     it('passes default fee 0n as named field to tx entry', async () => {
-        const client = txClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
-        await mod.privateTransfer(TRANSFER_PARAMS, mockSigner);
+        const client = bareTxClient('unshield');
+        await new ShieldedPoolModule(client).unshield(UNSHIELD_PARAMS);
         const [arg] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
         expect(arg['fee']).toBe(0n);
     });
 
     it('passes explicit fee as named field to tx entry', async () => {
-        const client = txClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
-        await mod.privateTransfer({ ...TRANSFER_PARAMS, fee: 999n }, mockSigner);
+        const client = bareTxClient('unshield');
+        await new ShieldedPoolModule(client).unshield({
+            ...UNSHIELD_PARAMS,
+            fee: 1_000_000_000_000_000n,
+        });
+        const [arg] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
+        expect(arg['fee']).toBe(1_000_000_000_000_000n);
+    });
+});
+
+// ─── privateTransfer – fee & assetId ──────────────────────────────────────────
+
+describe('ShieldedPoolModule.privateTransfer – fee & assetId args', () => {
+    it('passes default fee 0n as named field to tx entry', async () => {
+        const client = bareTxClient('private_transfer');
+        await new ShieldedPoolModule(client).privateTransfer(TRANSFER_PARAMS);
+        const [arg] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
+        expect(arg['fee']).toBe(0n);
+    });
+
+    it('passes explicit fee as named field to tx entry', async () => {
+        const client = bareTxClient('private_transfer');
+        await new ShieldedPoolModule(client).privateTransfer({ ...TRANSFER_PARAMS, fee: 999n });
         const [arg] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
         expect(arg['fee']).toBe(999n);
     });
 
     it('passes assetId as named field to tx entry', async () => {
-        const client = txClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
-        await mod.privateTransfer({ ...TRANSFER_PARAMS, assetId: 3 }, mockSigner);
+        const client = bareTxClient('private_transfer');
+        await new ShieldedPoolModule(client).privateTransfer({ ...TRANSFER_PARAMS, assetId: 3 });
         const [arg] = client._txEntry.mock.calls[0] as [Record<string, unknown>];
         expect(arg['asset_id']).toBe(3);
     });
-
-    it('submits as bare (unsigned) tx when no signer is provided', async () => {
-        const client = bareTxClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
-        const result = await mod.privateTransfer(TRANSFER_PARAMS);
-        expect(client._getBareTx).toHaveBeenCalledOnce();
-        expect(client._submitUnsignedAndWatch).toHaveBeenCalledWith('0xbaretx');
-        expect(result.ok).toBe(true);
-    });
-
-    it('returns TxResult from bare tx submission', async () => {
-        const client = bareTxClient('private_transfer');
-        const mod = new ShieldedPoolModule(client);
-        const result = await mod.privateTransfer(TRANSFER_PARAMS);
-        expect(result.txHash).toBe('0xabc');
-        expect(result.blockNumber).toBe(42);
-    });
 });
 
-// ─── claimRelayFees ───────────────────────────────────────────────────────────
+// ─── claimFees ────────────────────────────────────────────────────────────────
 
-describe('ShieldedPoolModule.claimRelayFees', () => {
-    it('signs claim_relay_fees with the asset and amount', async () => {
-        const client = txClient('claim_relay_fees');
-        const result = await new ShieldedPoolModule(client).claimRelayFees(
+describe('ShieldedPoolModule.claimFees', () => {
+    it('signs claim_fees with the asset and amount', async () => {
+        const client = txClient('claim_fees');
+        const result = await new ShieldedPoolModule(client).claimFees(
             { assetId: 3, amount: 500n },
             mockSigner
         );
@@ -492,21 +463,89 @@ describe('ShieldedPoolModule.claimRelayFees', () => {
     });
 
     it('refuses bad parameters before building the tx', async () => {
-        const client = txClient('claim_relay_fees');
+        const client = txClient('claim_fees');
         const mod = new ShieldedPoolModule(client);
-        await expect(mod.claimRelayFees({ assetId: 0, amount: 0n }, mockSigner)).rejects.toThrow(
-            'claimRelayFees.amount'
+        await expect(mod.claimFees({ assetId: 0, amount: 0n }, mockSigner)).rejects.toThrow(
+            'claimFees.amount'
         );
-        await expect(
-            mod.claimRelayFees({ assetId: 2 ** 32, amount: 1n }, mockSigner)
-        ).rejects.toThrow('claimRelayFees.assetId');
+        await expect(mod.claimFees({ assetId: 0, amount: 1n << 128n }, mockSigner)).rejects.toThrow(
+            'claimFees.amount'
+        );
+        await expect(mod.claimFees({ assetId: 2 ** 32, amount: 1n }, mockSigner)).rejects.toThrow(
+            'claimFees.assetId'
+        );
+        await expect(mod.claimFees({ assetId: -1, amount: 1n }, mockSigner)).rejects.toThrow(
+            'claimFees.assetId'
+        );
         expect(client._txEntry).not.toHaveBeenCalled();
     });
 
     it('surfaces a dispatch failure as ok: false', async () => {
         const result = await new ShieldedPoolModule(
-            txClient('claim_relay_fees', FINALIZED_ERR)
-        ).claimRelayFees({ assetId: 0, amount: 1n }, mockSigner);
+            txClient('claim_fees', FINALIZED_ERR)
+        ).claimFees({ assetId: 0, amount: 1n }, mockSigner);
         expect(result.ok).toBe(false);
+    });
+});
+
+// ─── pendingFees / minSpendFee ────────────────────────────────────────────────
+
+// Alice: the SS58 form and its AccountId32.
+const ALICE_SS58 = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY';
+const ALICE_HEX = '0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d';
+
+/** Stub with `ShieldedPool.PendingFees` storage and the `MinSpendFee` constant. */
+function readsClient(pending: unknown, minSpendFee: unknown = 1_000_000_000_000_000n) {
+    const getValue = vi.fn().mockResolvedValue(pending);
+    const MinSpendFee = vi.fn().mockResolvedValue(minSpendFee);
+    const client = {
+        request: vi.fn(),
+        unsafe: {
+            query: { ShieldedPool: { PendingFees: { getValue } } },
+            constants: { ShieldedPool: { MinSpendFee } },
+        },
+    } as unknown as SubstrateClient;
+    return { client, getValue, MinSpendFee };
+}
+
+describe('ShieldedPoolModule.pendingFees', () => {
+    it('reads PendingFees(account, assetId) as a bigint', async () => {
+        const { client, getValue } = readsClient(1_234n);
+        const fees = await new ShieldedPoolModule(client).pendingFees(ALICE_SS58, 0);
+        expect(fees).toBe(1_234n);
+        expect(getValue).toHaveBeenCalledWith(ALICE_SS58, 0);
+    });
+
+    it('accepts an AccountId32 hex, keyed by its SS58 form', async () => {
+        const { client, getValue } = readsClient(0n);
+        await new ShieldedPoolModule(client).pendingFees(ALICE_HEX, 7);
+        expect(getValue).toHaveBeenCalledWith(ALICE_SS58, 7);
+    });
+
+    it('normalizes a number or string value to bigint', async () => {
+        expect(await new ShieldedPoolModule(readsClient(5).client).pendingFees(ALICE_SS58, 0)).toBe(
+            5n
+        );
+        expect(
+            await new ShieldedPoolModule(
+                readsClient('340282366920938463463374607431768211455').client
+            ).pendingFees(ALICE_SS58, 0)
+        ).toBe((1n << 128n) - 1n);
+    });
+
+    it('refuses a non-address or a bad asset id before reading', async () => {
+        const { client, getValue } = readsClient(0n);
+        const mod = new ShieldedPoolModule(client);
+        await expect(mod.pendingFees('not-an-address', 0)).rejects.toThrow('pendingFees.account');
+        await expect(mod.pendingFees(ALICE_SS58, 2 ** 32)).rejects.toThrow('pendingFees.assetId');
+        expect(getValue).not.toHaveBeenCalled();
+    });
+});
+
+describe('ShieldedPoolModule.minSpendFee', () => {
+    it('reads the MinSpendFee constant as a bigint', async () => {
+        const { client, MinSpendFee } = readsClient(0n, 1_000_000_000_000_000n);
+        expect(await new ShieldedPoolModule(client).minSpendFee()).toBe(1_000_000_000_000_000n);
+        expect(MinSpendFee).toHaveBeenCalledOnce();
     });
 });

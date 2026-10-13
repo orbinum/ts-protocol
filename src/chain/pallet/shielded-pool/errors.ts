@@ -63,10 +63,11 @@ export type PalletErrorKind =
  * meets through the same path. An unlisted name degrades to `unknown`, so a
  * runtime newer than this SDK loses the hint and nothing else.
  *
- * Three entries are not shielded-pool variants:
+ * Four entries are not shielded-pool variants:
  *   - `NullifierAlreadySpent` — raised by the SDK's own pre-flight check in
  *     `ops/spend/lifecycle`, worded to match the pallet so one situation
  *     produces one reaction however it was found;
+ *   - `InvalidProof` — the zk-verifier pallet;
  *   - `InsufficientBalance` / `ExistentialDeposit` — the balances pallet,
  *     reached through the same submit.
  */
@@ -74,7 +75,6 @@ const ERROR_KINDS: Readonly<Record<string, PalletErrorKind>> = {
     // Notes and nullifiers
     NullifierAlreadyUsed: 'already-spent',
     NullifierAlreadySpent: 'already-spent',
-    CommitmentNotFound: 'ghost-note',
     CommitmentAlreadyExists: 'shape',
     UnknownMerkleRoot: 'stale-proof',
 
@@ -82,12 +82,8 @@ const ERROR_KINDS: Readonly<Record<string, PalletErrorKind>> = {
     InvalidAmount: 'amount',
     InsufficientPoolBalance: 'amount',
     FeeTooLow: 'amount',
+    // `claim_fees` asked for more than the caller's pending fees
     InsufficientPendingFees: 'amount',
-
-    // Relayer calls (commit_relay / claim_relay_fees)
-    RelayerNotRegistered: 'shape',
-    NotRegistered: 'shape',
-    TooManyCommits: 'capacity',
 
     // Proofs
     InvalidProof: 'proof',
@@ -98,7 +94,6 @@ const ERROR_KINDS: Readonly<Record<string, PalletErrorKind>> = {
     InvalidAssetId: 'asset',
     AssetNotVerified: 'asset',
     AssetNotSupported: 'asset',
-    AssetIdMismatch: 'asset',
     AssetIdAlreadyExists: 'asset',
 
     // Request shape
@@ -205,9 +200,9 @@ export function isAlreadySpentError(rawMessage: string): boolean {
 
 /**
  * True when a spend failed because an input commitment is not in the on-chain
- * tree — a "ghost" note that never landed (or was pruned). Surfaces either as
- * the merkle-proof RPC failing (no leaf for that commitment) or as the pallet
- * rejecting the proof against a tree that never held it.
+ * tree — a "ghost" note that never landed (or was pruned). Surfaces as the
+ * merkle-proof RPC failing (no leaf for that commitment): the spend never
+ * reaches the chain.
  *
  * `UnknownMerkleRoot` is deliberately NOT a ghost note here even though both
  * are proof-versus-tree failures: a stale root means the note exists and a

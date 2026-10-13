@@ -13,7 +13,7 @@
  * rather than constructing a client you never call.
  */
 import type { EvmClient } from '../EvmClient';
-import type { ShieldParams } from '../../pallet/shielded-pool/extrinsicParams';
+import type { ShieldParams } from '../../pallet/shielded-pool/types/index';
 import type { EvmSigner } from './types';
 import { PRECOMPILE_ADDR } from './addresses';
 import { buildShieldCalldata } from './shieldedPoolCalldata';

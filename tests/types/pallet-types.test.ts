@@ -9,7 +9,7 @@ import type {
     RawTransferInput,
     RawTransferOutput,
     PrivateTransferArgs,
-} from '../../src/chain/pallet/shielded-pool/extrinsics';
+} from '../../src/chain/pallet/shielded-pool/types/index';
 import type {
     ShieldedEvent,
     NullifiersSpentEvent,
@@ -17,7 +17,7 @@ import type {
     UnshieldedEvent,
     MerkleRootUpdatedEvent,
     ShieldedPoolEvent,
-} from '../../src/chain/pallet/shielded-pool/events';
+} from '../../src/chain/pallet/shielded-pool/types/index';
 
 // ─── pallet-args structural tests ────────────────────────────────────────────
 
@@ -42,6 +42,8 @@ describe('pallet-args types', () => {
             amount: 1_000_000n,
             commitment: [1, 2, 3],
             encryptedMemo: new Array(104).fill(0),
+            proof: new Array(128).fill(0),
+            circuitVersion: 1,
         };
         expect(args.assetId).toBe(0);
         expect(args.amount).toBe(1_000_000n);
@@ -59,7 +61,7 @@ describe('pallet-args types', () => {
             recipient: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
             fee: 0n,
             changeCommitment: new Array(32).fill(0),
-            circuitVersion: 1,
+            circuitVersion: 3,
         };
         expect(args.proof).toHaveLength(192);
         expect(typeof args.recipient).toBe('string');
@@ -82,7 +84,7 @@ describe('pallet-args types', () => {
             encryptedMemos: [new Array(104).fill(0)],
             assetId: 0,
             fee: 0n,
-            circuitVersion: 1,
+            circuitVersion: 3,
         };
         expect(args.nullifiers).toHaveLength(1);
         expect(args.outputs).toHaveLength(1);
@@ -168,14 +170,17 @@ describe('pallet-events types', () => {
         }
     });
 
-    it('ShieldedPoolEvent covers RelayFeesClaimed variant', () => {
-        const event: ShieldedPoolEvent = {
-            type: 'RelayFeesClaimed',
-            data: { who: '5Grw', to: '5Grw', assetId: 0, amount: 4000n },
+    it('ShieldedPoolEvent covers FeeCredited and FeesClaimed variants', () => {
+        const credited: ShieldedPoolEvent = {
+            type: 'FeeCredited',
+            data: { validator: '5Grw', assetId: 0, amount: 1000n },
         };
-        if (event.type === 'RelayFeesClaimed') {
-            expect(event.data.amount).toBe(4000n);
-        }
+        const claimed: ShieldedPoolEvent = {
+            type: 'FeesClaimed',
+            data: { validator: '5Grw', assetId: 0, amount: 1000n },
+        };
+        if (credited.type === 'FeeCredited') expect(credited.data.validator).toBe('5Grw');
+        if (claimed.type === 'FeesClaimed') expect(claimed.data.amount).toBe(1000n);
     });
 
     it('ShieldedPoolEvent covers NullifiersSpent variant', () => {

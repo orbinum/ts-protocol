@@ -34,10 +34,10 @@ export type ShieldOperation = {
     commitment: Bytes32;
     /** Encrypted memo bytes — exactly 180 bytes. */
     encryptedMemo: number[];
-    /** Shield proof. Absent from shields before spec 17. */
-    proof?: number[];
-    /** Shield circuit version. Absent from shields before spec 17. */
-    circuitVersion?: number;
+    /** Shield proof bytes. */
+    proof: number[];
+    /** Shield circuit version (verified against that version's VK). */
+    circuitVersion: number;
 };
 
 // ─── Extrinsic argument types ─────────────────────────────────────────────────
@@ -53,10 +53,10 @@ export type ShieldArgs = {
     commitment: Bytes32;
     /** Encrypted memo — exactly 180 bytes. */
     encryptedMemo: number[];
-    /** Shield proof. Absent from shields before spec 17. */
-    proof?: number[];
-    /** Shield circuit version. Absent from shields before spec 17. */
-    circuitVersion?: number;
+    /** Shield proof bytes. */
+    proof: number[];
+    /** Shield circuit version (verified against that version's VK). */
+    circuitVersion: number;
 };
 
 /**
@@ -87,7 +87,7 @@ export type RawTransferOutput = {
  * Call index 1 — `private_transfer` (Unsigned/gasless origin)
  * Transfers value between notes without revealing sender, recipient or amount.
  * Fee is embedded in the ZK proof: input_sum == output_sum + fee.
- * The fee is paid to the block author (validator) by the pallet runtime.
+ * The fee is credited to the block author's validator account.
  */
 export type PrivateTransferArgs = {
     /** Groth16 proof bytes — max 512 bytes. */
@@ -99,7 +99,7 @@ export type PrivateTransferArgs = {
     encryptedMemos: number[][];
     /** Asset ID being transferred (public input of the proof). */
     assetId: number;
-    /** Gasless fee in planck. Paid to the block author (validator). */
+    /** Spend fee in planck, credited to the block author's validator account. */
     fee: bigint;
     /** Circuit version the input notes were created under (verified against that version's VK). */
     circuitVersion: number;
@@ -109,6 +109,7 @@ export type PrivateTransferArgs = {
  * Call index 2 — `unshield` (Unsigned/gasless origin)
  * Withdraws a note from the pool to a public account.
  * Fee is embedded in the ZK proof: note_value == amount + fee + changeValue.
+ * The fee is credited to the block author's validator account.
  */
 export type UnshieldArgs = {
     /** Groth16 proof bytes — max 512 bytes. */
@@ -122,7 +123,7 @@ export type UnshieldArgs = {
     amount: bigint;
     /** SS58 or 0x-prefixed AccountId of the recipient. */
     recipient: string;
-    /** Gasless fee in planck. */
+    /** Spend fee in planck. */
     fee: bigint;
     /**
      * 32-byte change note commitment (LE). All zeros for total unshield.
@@ -171,21 +172,11 @@ export type UnverifyAssetArgs = {
 };
 
 /**
- * Call index 18 — `commit_relay` (Signed origin, or a registered EVM relayer)
- * Records relay commits: a spend submitted in a later block credits its fee to
- * the relayer that committed to it, whoever submits it.
+ * Call index 19 — `claim_fees` (Signed origin)
+ * Pays the caller's own pending spend fees out of the pool to the caller,
+ * publicly.
  */
-export type CommitRelayArgs = {
-    /** `relay_commit_hash(op_hash, relayer H160)` per spend, 32 bytes each. */
-    commits: Bytes32[];
-};
-
-/**
- * Call index 19 — `claim_relay_fees` (Signed origin)
- * Pays the caller's pending relay fees out of the pool, publicly: to the
- * account of its registered relay address, else to the caller.
- */
-export type ClaimRelayFeesArgs = {
+export type ClaimFeesArgs = {
     assetId: number;
     amount: bigint;
 };
@@ -201,5 +192,4 @@ export type ShieldedPoolCall =
     | { type: 'registerAsset'; args: RegisterAssetArgs }
     | { type: 'verifyAsset'; args: VerifyAssetArgs }
     | { type: 'unverifyAsset'; args: UnverifyAssetArgs }
-    | { type: 'commitRelay'; args: CommitRelayArgs }
-    | { type: 'claimRelayFees'; args: ClaimRelayFeesArgs };
+    | { type: 'claimFees'; args: ClaimFeesArgs };

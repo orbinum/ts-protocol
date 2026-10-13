@@ -1,0 +1,38 @@
+export type {
+    ShieldParams,
+    UnshieldParams,
+    PrivateTransferInput,
+    PrivateTransferOutput,
+    PrivateTransferParams,
+    ShieldBatchItem,
+    ShieldBatchParams,
+    ClaimFeesParams,
+} from './params';
+export type {
+    ShieldedEvent,
+    NullifiersSpentEvent,
+    CommitmentsInsertedEvent,
+    UnshieldedEvent,
+    MerkleRootUpdatedEvent,
+    AssetRegisteredEvent,
+    AssetVerifiedEvent,
+    AssetUnverifiedEvent,
+    FeeCreditedEvent,
+    FeesClaimedEvent,
+    ShieldedPoolEvent,
+} from './events';
+export type {
+    Bytes32,
+    ShieldOperation,
+    ShieldArgs,
+    ShieldBatchArgs,
+    RawTransferInput,
+    RawTransferOutput,
+    PrivateTransferArgs,
+    UnshieldArgs,
+    RegisterAssetArgs,
+    VerifyAssetArgs,
+    UnverifyAssetArgs,
+    ClaimFeesArgs,
+    ShieldedPoolCall,
+} from './extrinsics';

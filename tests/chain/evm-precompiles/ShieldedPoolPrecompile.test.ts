@@ -4,7 +4,7 @@ import { SP_SEL, PRECOMPILE_ADDR } from '../../../src/chain/evm/precompiles/addr
 import { toHex } from '../../../src/foundation/encoding/hex';
 import type { EvmClient } from '../../../src/chain/evm/EvmClient';
 import type { EvmSigner } from '../../../src/chain/evm/precompiles/types/index';
-import type { ShieldParams } from '../../../src/chain/pallet/shielded-pool/extrinsicParams';
+import type { ShieldParams } from '../../../src/chain/pallet/shielded-pool/types/index';
 
 /** A stand-in shield proof: the calls carry it, nothing here verifies it. */
 const SHIELD_PROOF = new Uint8Array(128).fill(1);

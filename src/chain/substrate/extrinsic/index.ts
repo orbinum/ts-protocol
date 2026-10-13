@@ -209,17 +209,9 @@ export function mapExtrinsicArgs(
             return { operations: ops };
         }
         if (m_norm === 'privatetransfer') {
-            const roots = get(1, 'merkle_roots');
-            const single = get(-1, 'merkle_root');
-            const rootArgs =
-                single !== undefined && roots === undefined
-                    ? { merkle_root: single }
-                    : Array.isArray(roots)
-                      ? { merkle_roots: roots }
-                      : { merkle_root: get(1, 'merkle_root') };
             return {
                 proof: get(0, 'proof'),
-                ...rootArgs,
+                merkle_roots: get(1, 'merkle_roots'),
                 nullifiers: get(2, 'nullifiers'),
                 commitments: get(3, 'commitments'),
                 encrypted_memos: get(4, 'encrypted_memos'),
@@ -242,10 +234,7 @@ export function mapExtrinsicArgs(
                 circuit_version: get(9, 'circuit_version'),
             };
         }
-        if (m_norm === 'commitrelay') {
-            return { commits: get(0, 'commits') };
-        }
-        if (m_norm === 'claimrelayfees') {
+        if (m_norm === 'claimfees') {
             return { asset_id: get(0, 'asset_id'), amount: get(1, 'amount') };
         }
         if (m_norm === 'registerasset') {
@@ -458,12 +447,12 @@ export function mapZkEventData(
         };
     }
 
-    if (m_norm === 'relayfeesclaimed') {
+    // Spend fees credited to the block author's validator, and claimed by it.
+    if (m_norm === 'feecredited' || m_norm === 'feesclaimed') {
         return {
-            who: get(0, 'who'),
-            to: get(1, 'to'),
-            asset_id: get(2, 'asset_id'),
-            amount: formatAmount(get(3, 'amount')),
+            validator: get(0, 'validator'),
+            asset_id: get(1, 'asset_id'),
+            amount: formatAmount(get(2, 'amount')),
         };
     }
 

@@ -8,17 +8,21 @@ import {
     submitBareTx,
     type SubmitOptions,
 } from '../../tx';
-import { MemoFormat } from '../../../protocol/memo/index';
-import { accountIdHexToSs58 } from '../../../foundation/address';
 import type {
     ShieldParams,
     UnshieldParams,
     PrivateTransferParams,
     ShieldBatchParams,
-    ClaimRelayFeesParams,
-} from './extrinsicParams';
-import { assertClaimRelayFeesParams, assertMerkleRoots } from './validation';
-import { shieldBatchCallArgs, shieldCallArgs } from './callArgs';
+    ClaimFeesParams,
+} from './types/index';
+import {
+    claimFeesCallArgs,
+    privateTransferCallArgs,
+    shieldBatchCallArgs,
+    shieldCallArgs,
+    unshieldCallArgs,
+} from './calls/index';
+import { readMinSpendFee, readPendingFees } from './storage/index';
 
 // ─── ShieldedPoolModule ───────────────────────────────────────────────────────
 
@@ -27,7 +31,9 @@ import { shieldBatchCallArgs, shieldCallArgs } from './callArgs';
  *
  * Transactions are built via polkadot-api's UnsafeApi (metadata-driven),
  * which means the Orbinum node must be reachable on first use.
- * Signing is delegated to a SubstrateSigner (see polkadot-api/signer).
+ * Signing is delegated to a SubstrateSigner (see polkadot-api/signer). Spends
+ * (`privateTransfer`, `unshield`) are never signed: the runtime accepts them
+ * only unsigned, so no account is linked to a spend's nullifiers.
  *
  * Arguments are passed BY NAME through PAPI, so the field names — not the
  * order — have to match the runtime's. A renamed parameter fails at
@@ -51,97 +57,42 @@ export class ShieldedPoolModule {
         signer: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
+        const args = shieldCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'shield');
-        const tx = callUnsafeTx(entry, shieldCallArgs(params));
+        const tx = callUnsafeTx(entry, args);
         return signAndSubmitTx(tx, signer, options);
     }
 
     /**
      * Withdraws tokens from the shielded pool to a public address.
-     * Submits as an UNSIGNED (gasless) transaction — fee is embedded in the ZK proof.
-     * Pass a `signer` to fall back to signed submission (e.g. for testing).
      * Extrinsic: shieldedPool.unshield(proof, merkleRoot, nullifier, assetId, amount, recipient, fee, changeCommitment, changeEncryptedMemo, circuitVersion)
      *
-     * The relay fee recipient is NOT a parameter: the chain takes it from the
-     * dispatch origin. Submitting unsigned credits the block author; submitting
-     * through the EVM precompile credits whoever signed that transaction.
+     * Always submitted UNSIGNED: the fee is a public input of the proof, and the
+     * runtime refuses a signed spend with `BadOrigin`. The fee is credited to
+     * the block author's validator account (`FeeCredited`). Of `options`, only
+     * `onBroadcast` applies: an unsigned extrinsic has no signed extensions.
      */
-    async unshield(
-        params: UnshieldParams,
-        signer?: SubstrateSigner,
-        options?: SubmitOptions
-    ): Promise<TxResult> {
+    async unshield(params: UnshieldParams, options?: SubmitOptions): Promise<TxResult> {
+        const args = unshieldCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'unshield');
-        // AccountId32 codec in PAPI expects SS58 string — convert from hex
-        const recipientSs58 = accountIdHexToSs58(params.recipientAddress);
-        if (!recipientSs58) throw new Error(`Invalid recipientAddress: ${params.recipientAddress}`);
-        const changeCommitment = params.changeCommitment ?? '0x' + '00'.repeat(32);
-
-        // Validate and encode change_encrypted_memo (if provided)
-        let changeEncryptedMemo: Uint8Array;
-        if (params.changeEncryptedMemo && params.changeEncryptedMemo.length > 0) {
-            MemoFormat.validate(params.changeEncryptedMemo, 'changeEncryptedMemo');
-            changeEncryptedMemo = params.changeEncryptedMemo;
-        } else {
-            // Empty memo for total unshield
-            changeEncryptedMemo = new Uint8Array(0);
-        }
-
-        const tx = callUnsafeTx(entry, {
-            proof: params.proof,
-            merkle_root: params.merkleRoot,
-            nullifier: params.nullifier,
-            asset_id: params.assetId,
-            amount: params.amount,
-            recipient: recipientSs58,
-            fee: params.fee ?? 0n,
-            change_commitment: changeCommitment,
-            change_encrypted_memo: changeEncryptedMemo,
-            circuit_version: params.circuitVersion,
-        });
-        if (signer) {
-            return signAndSubmitTx(tx, signer, options);
-        }
+        const tx = callUnsafeTx(entry, args);
         return submitBareTx(tx, this.substrate, options?.onBroadcast);
     }
 
     /**
      * Performs a private (shielded) transfer between two notes.
-     * Submits as an UNSIGNED (gasless) transaction — fee is embedded in the ZK proof.
-     * Pass a `signer` to fall back to signed submission (e.g. for testing).
      * Extrinsic: shieldedPool.privateTransfer(proof, merkleRoots, nullifiers, commitments, memos, assetId, fee, circuitVersion)
      *
-     * The relay fee recipient is NOT a parameter: the chain takes it from the
-     * dispatch origin. Submitting unsigned credits the block author; submitting
-     * through the EVM precompile credits whoever signed that transaction.
+     * Always submitted UNSIGNED, like `unshield`: the fee is a public input of
+     * the proof and is credited to the block author's validator account.
      */
     async privateTransfer(
         params: PrivateTransferParams,
-        signer?: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
-        assertMerkleRoots(params.merkleRoots, 'privateTransfer.merkleRoots');
-        const nullifiers = params.inputs.map((inp) => inp.nullifier);
-        const commitments = params.outputs.map((out) => out.commitment);
-        const memos = params.outputs.map((out, i) => {
-            MemoFormat.validate(out.encryptedMemo, `privateTransfer.outputs[${i}].encryptedMemo`);
-            return out.encryptedMemo;
-        });
-
+        const args = privateTransferCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'private_transfer');
-        const tx = callUnsafeTx(entry, {
-            proof: params.proof,
-            merkle_roots: params.merkleRoots,
-            nullifiers,
-            commitments,
-            encrypted_memos: memos,
-            asset_id: params.assetId,
-            fee: params.fee ?? 0n,
-            circuit_version: params.circuitVersion,
-        });
-        if (signer) {
-            return signAndSubmitTx(tx, signer, options);
-        }
+        const tx = callUnsafeTx(entry, args);
         return submitBareTx(tx, this.substrate, options?.onBroadcast);
     }
 
@@ -154,26 +105,49 @@ export class ShieldedPoolModule {
         signer: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
+        const args = shieldBatchCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'shield_batch');
-        const tx = callUnsafeTx(entry, shieldBatchCallArgs(params));
+        const tx = callUnsafeTx(entry, args);
         return signAndSubmitTx(tx, signer, options);
     }
 
     /**
-     * Claims the signer's pending relay fees, publicly. A registered relayer is
-     * paid at the account of its EVM address; an unregistered signer at its own
-     * account. Bounded by the signer's pending balance — no proof, no note.
+     * Pays the signer's own pending spend fees out of the pool to the signer,
+     * publicly. Bounded by `pendingFees(signer, assetId)` — no proof, no note.
+     * Claiming more fails with `InsufficientPendingFees`.
      *
-     * Extrinsic: shieldedPool.claim_relay_fees(asset_id, amount).
+     * Extrinsic: shieldedPool.claim_fees(asset_id, amount).
      */
-    async claimRelayFees(
-        params: ClaimRelayFeesParams,
+    async claimFees(
+        params: ClaimFeesParams,
         signer: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
-        assertClaimRelayFeesParams(params, 'claimRelayFees');
-        const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'claim_relay_fees');
-        const tx = callUnsafeTx(entry, { asset_id: params.assetId, amount: params.amount });
+        const args = claimFeesCallArgs(params);
+        const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'claim_fees');
+        const tx = callUnsafeTx(entry, args);
         return signAndSubmitTx(tx, signer, options);
+    }
+
+    // ─── Storage & constants ───────────────────────────────────────────────────
+
+    /**
+     * Spend fees credited to `account` in `assetId` and not yet claimed, in
+     * planck (`ShieldedPool.PendingFees`). Every spend's fee is credited to the
+     * validator account of the block's author; zero for any other account.
+     *
+     * `account` is an SS58 address or a 0x-prefixed AccountId32 hex (an EVM H160
+     * reads its mapped account).
+     */
+    pendingFees(account: string, assetId: number): Promise<bigint> {
+        return readPendingFees(this.substrate, account, assetId);
+    }
+
+    /**
+     * The runtime's floor on a spend's fee, in planck (`ShieldedPool.MinSpendFee`).
+     * Changes only with a runtime upgrade; `MIN_GASLESS_FEE` is its current value.
+     */
+    minSpendFee(): Promise<bigint> {
+        return readMinSpendFee(this.substrate);
     }
 }

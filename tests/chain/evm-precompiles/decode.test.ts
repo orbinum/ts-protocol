@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { decodePrecompileCalldata } from '../../../src/chain/evm/precompiles/decode';
 import { buildShieldCalldata } from '../../../src/chain/evm/precompiles/shieldedPoolCalldata';
 import { PRECOMPILE_ADDR } from '../../../src/chain/evm/precompiles/addresses';
-import type { ShieldParams } from '../../../src/chain/pallet/shielded-pool/extrinsicParams';
+import type { ShieldParams } from '../../../src/chain/pallet/shielded-pool/types/index';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 

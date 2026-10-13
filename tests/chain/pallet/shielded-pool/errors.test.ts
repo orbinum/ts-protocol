@@ -81,10 +81,6 @@ describe('isAlreadySpentError', () => {
 });
 
 describe('isGhostNoteError', () => {
-    it('detects the pallet rejection for a missing commitment', () => {
-        expect(isGhostNoteError('… message: Some("CommitmentNotFound") …')).toBe(true);
-    });
-
     it('SECURITY: does NOT flag a stale merkle root as a ghost note', () => {
         // Both are proof-versus-tree failures, which is why they used to be one
         // case — but the reactions are opposite and one destroys funds. A ghost
@@ -123,7 +119,6 @@ describe('palletErrorKind', () => {
     it.each([
         ['NullifierAlreadyUsed', 'already-spent'],
         ['NullifierAlreadySpent', 'already-spent'],
-        ['CommitmentNotFound', 'ghost-note'],
         ['UnknownMerkleRoot', 'stale-proof'],
         ['InvalidAmount', 'amount'],
         ['FeeTooLow', 'amount'],
@@ -266,10 +261,43 @@ describe('pool rejection codes', () => {
     });
 });
 
-describe('relayer call errors', () => {
-    it('are classified', () => {
-        expect(palletErrorKind('RelayerNotRegistered')).toBe('shape');
-        expect(palletErrorKind('TooManyCommits')).toBe('capacity');
+describe('claim_fees errors', () => {
+    it('classifies InsufficientPendingFees as an amount problem', () => {
         expect(palletErrorKind('InsufficientPendingFees')).toBe('amount');
+        expect(classifyChainError('Module(ShieldedPool.InsufficientPendingFees)')).toBe('amount');
+    });
+});
+
+describe('KNOWN_PALLET_ERRORS', () => {
+    it('is the pallet error enum plus the names reached through the same path', () => {
+        const pallet = [
+            'CommitmentAlreadyExists',
+            'NullifierAlreadyUsed',
+            'UnknownMerkleRoot',
+            'MerkleTreeFull',
+            'InsufficientPoolBalance',
+            'InvalidAmount',
+            'TooManyInputsOrOutputs',
+            'ProofVerificationFailed',
+            'InvalidMemoSize',
+            'MemoCommitmentMismatch',
+            'InvalidAssetId',
+            'AssetNotVerified',
+            'InvalidRecipient',
+            'FeeTooLow',
+            'InvalidPublicSignals',
+            'InsufficientPendingFees',
+            'FeeRecipientUnavailable',
+            'EmptyBatch',
+            'AssetIdAlreadyExists',
+            'AssetNotSupported',
+        ];
+        const other = [
+            'NullifierAlreadySpent',
+            'InvalidProof',
+            'InsufficientBalance',
+            'ExistentialDeposit',
+        ];
+        expect([...KNOWN_PALLET_ERRORS].sort()).toEqual([...pallet, ...other].sort());
     });
 });

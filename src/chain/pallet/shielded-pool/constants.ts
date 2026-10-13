@@ -8,22 +8,20 @@
  * failed extrinsic.
  *
  * These are the current chain's values, which is what every caller needs today.
- * A chain that has moved on should pass its own — and note that not all of them
- * need a runtime upgrade to move: see `MIN_GASLESS_FEE`.
+ * A chain that has moved on should pass its own.
  */
 
 /**
- * Smallest fee an unsigned (gasless) shielded-pool extrinsic may carry, in
- * planck — the default of `pallet-relayer`'s `MinRelayFee`.
+ * Smallest fee a spend (`private_transfer` / `unshield`) may carry, in planck.
  *
- * MUTABLE STORAGE, not a runtime constant: governance moves it with
- * `set_min_relay_fee`, no upgrade required. A wallet that hardcodes this value
- * starts failing with `FeeTooLow` the moment the floor rises, so read
- * `min_relay_fee()` when the answer has to be current.
+ * Mirrors the runtime constant `ShieldedPool.MinSpendFee`, which moves only
+ * with a runtime upgrade; `ShieldedPoolModule.minSpendFee()` reads the live
+ * value. Below it the spend is rejected (`FeeTooLow`, or `Payment` at pool
+ * admission).
  *
- * Below it the pallet rejects with `FeeTooLow`. The fee is paid to the block
- * author by the runtime, which is what lets a user with no public balance spend
- * a shielded note at all.
+ * The fee comes out of the shielded note and is credited to the block author's
+ * validator account, which is what lets a user with no public balance spend a
+ * shielded note at all.
  *
  * Unshield fixes the fee at exactly this value; a private transfer may pay more
  * (the sender chooses), which is why a reconstructed transfer fee is unknown

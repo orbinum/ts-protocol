@@ -330,7 +330,7 @@ export class SubstrateClient {
 
     /**
      * Submits a bare (unsigned) extrinsic and waits for finalization.
-     * Used for gasless private_transfer and unshield transactions.
+     * Used for private_transfer and unshield, which the runtime accepts only unsigned.
      * The bare tx bytes are produced by `tx.getBareTx()` from polkadot-api.
      */
     async submitUnsignedAndWatch(bareTx: Uint8Array): Promise<TxFinalizedPayload> {

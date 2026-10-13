@@ -167,7 +167,7 @@ export function signAndSubmitTx(
 
 /**
  * Submits an unsigned (bare) transaction using polkadot-api's getBareTx().
- * Used for gasless private_transfer and unshield where no signer is available.
+ * Used for private_transfer and unshield, which the runtime accepts only unsigned.
  */
 export async function submitBareTx(
     tx: { getBareTx(): Promise<Uint8Array> },

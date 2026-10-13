@@ -17,8 +17,8 @@
  * user cannot act on, so every value is refused HERE, at the last point where
  * the field name is still known and can go in the error message.
  */
-import type { ShieldParams } from '../../pallet/shielded-pool/extrinsicParams';
-import { assertShieldParams } from '../../pallet/shielded-pool/validation';
+import type { ShieldParams } from '../../pallet/shielded-pool/types/index';
+import { assertShieldParams } from '../../pallet/shielded-pool/calls/index';
 import { fromHex, isHexOfLength } from '../../../foundation/encoding/hex';
 import { encodeHex } from './abi';
 import { SP_SEL } from './addresses';

@@ -6,27 +6,15 @@
  */
 
 import { toHex } from '../../../foundation/encoding/hex';
-import { KNOWN_PRECOMPILES, SP_SEL } from './addresses';
+import { KNOWN_PRECOMPILES } from './addresses';
 import { fromHex } from '../../../foundation/encoding/hex';
 import { decodeUint } from './abi';
 
-/** The current shield selector; the pre-proof one carries no `circuit_version`. */
-const SHIELD_SELECTOR = toHex(SP_SEL.SHIELD).slice(2);
-
 /**
- * Which shielded-pool operation a precompile call performs.
- *
- * Named rather than left to the caller to derive from `fnSig`, because the
- * obvious derivation is substring matching and `shield` is a substring of
- * `unshield` — a classifier that checks in the wrong order reports every
- * unshield as a shield, silently, and a new pallet method breaks it again.
+ * Which shielded-pool operation a precompile call performs. Named rather than
+ * left to the caller to derive from `fnSig`.
  */
-export type PrecompileMethod =
-    | 'shield'
-    | 'unshield'
-    | 'privateTransfer'
-    | 'commitRelay'
-    | 'claimRelayFees';
+export type PrecompileMethod = 'shield';
 
 export type DecodedPrecompile = {
     fnSig: string;
@@ -38,44 +26,10 @@ export type DecodedPrecompile = {
     args: Record<string, unknown>;
 };
 
-/**
- * The operation a function signature names.
- *
- * Anchored at the start and matched longest-first, so `unshield(` can never be
- * read as `shield(`.
- */
+/** The operation a function signature names, anchored at the start. */
 function methodOf(fnSig: string): PrecompileMethod | null {
-    if (fnSig.startsWith('unshield(')) return 'unshield';
-    if (fnSig.startsWith('privateTransfer(')) return 'privateTransfer';
-    if (fnSig.startsWith('commitRelay(')) return 'commitRelay';
-    if (fnSig.startsWith('claimRelayFees(')) return 'claimRelayFees';
     if (fnSig.startsWith('shield(')) return 'shield';
     return null;
-}
-
-/** Bytes of `privateTransfer`'s ABI head: eight 32-byte slots. */
-const PRIVATE_TRANSFER_HEAD = 8 * 32;
-
-/**
- * The `bytes32[]` of roots whose offset sits in head slot 1, or `[]` when it
- * cannot be read honestly. Offset and count come from the calldata, so both are
- * bounds-checked before anything is read:
- *
- * - the offset must point past the head (an offset into it would read the
- *   head's own words as roots) and inside the data;
- * - at most two roots exist, so a larger count reads as none;
- * - the roots must fit in the data.
- */
-function decodeRoots(data: Uint8Array): string[] {
-    const offset = decodeUint(data, 32);
-    if (offset < BigInt(PRIVATE_TRANSFER_HEAD) || offset > BigInt(data.length - 32)) return [];
-    const count = decodeUint(data, Number(offset));
-    if (count > 2n) return [];
-    const start = Number(offset) + 32;
-    if (start + Number(count) * 32 > data.length) return [];
-    return Array.from({ length: Number(count) }, (_, i) =>
-        toHex(data.slice(start + i * 32, start + (i + 1) * 32))
-    );
 }
 
 /**
@@ -85,8 +39,7 @@ function decodeRoots(data: Uint8Array): string[] {
  * past the end, so a field that is half present decodes to a value nobody
  * encoded — 16 bytes of `0xff` followed by 16 substituted zeros reads as
  * ~1.15e77. This input comes from the CHAIN, so a truncated or hand-crafted
- * call is ordinary, and consumers render `args.amount` to the user as what a
- * transaction moved. An absent field is honest; a fabricated one is not.
+ * call is ordinary. An absent field is honest; a fabricated one is not.
  */
 function hasFullHead(data: Uint8Array, slots: number): boolean {
     return data.length >= slots * 32;
@@ -111,133 +64,18 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
     // ABI head after selector:
     // [0-31] assetId | [32-63] commitment (bytes32) | [64-95] offset→memo
     // [96-127] offset→proof | [128-159] circuit_version
-    // The pre-proof shield(uint32,bytes32,bytes) shares the first three slots.
     if (fnSig.startsWith('shield(')) {
         try {
             const data = fromHex(input.slice(10));
-            if (!hasFullHead(data, 3)) return { fnSig, method: methodOf(fnSig), args: {} };
-            const assetId = decodeUint(data, 0);
-            const commitment = toHex(data.slice(32, 64));
-            // amount is msg.value — not present in calldata
-            const args: Record<string, unknown> = { assetId, commitment };
-            if (selector === SHIELD_SELECTOR && hasFullHead(data, 5)) {
-                args['circuitVersion'] = decodeUint(data, 128);
-            }
-            return { fnSig, method: methodOf(fnSig), args };
-        } catch {
-            return { fnSig, method: methodOf(fnSig), args: {} };
-        }
-    }
-
-    // unshield(bytes,bytes32,bytes32,uint32,uint256,bytes32,uint256,bytes32,bytes,uint32)
-    // ABI head after selector:
-    // [0-31] offset→proof | [32-63] root | [64-95] nullifier
-    // [96-127] assetId    | [128-159] amount | [160-191] recipient | [192-223] fee
-    // [224-255] change_commitment | [256-287] offset→change_encrypted_memo | [288-319] circuit_version
-    if (fnSig.startsWith('unshield(')) {
-        try {
-            const data = fromHex(input.slice(10));
-            if (!hasFullHead(data, 10)) return { fnSig, method: methodOf(fnSig), args: {} };
-            const root = toHex(data.slice(32, 64));
-            const nullifier = toHex(data.slice(64, 96));
-            const assetId = decodeUint(data, 96);
-            const amount = decodeUint(data, 128);
-            const recipient = toHex(data.slice(160, 192));
-            const fee = decodeUint(data, 192);
-            const changeCommitment = toHex(data.slice(224, 256));
-            const circuitVersion = decodeUint(data, 288);
+            if (!hasFullHead(data, 5)) return { fnSig, method: methodOf(fnSig), args: {} };
             return {
                 fnSig,
                 method: methodOf(fnSig),
                 args: {
-                    root,
-                    nullifier,
-                    assetId,
-                    amount,
-                    recipient,
-                    fee,
-                    changeCommitment,
-                    circuitVersion,
+                    assetId: decodeUint(data, 0),
+                    commitment: toHex(data.slice(32, 64)),
+                    circuitVersion: decodeUint(data, 128),
                 },
-            };
-        } catch {
-            return { fnSig, method: methodOf(fnSig), args: {} };
-        }
-    }
-
-    // privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],uint32,uint256,uint32)
-    // and, before spec 18, privateTransfer(bytes,bytes32,...) with one root.
-    // ABI head after selector (8 slots):
-    // [0-31] offset→proof | [32-63] offset→roots (or the single root) | [64-95] offset→nullifiers
-    // [96-127] offset→commitments | [128-159] offset→memos
-    // [160-191] assetId (uint32) | [192-223] fee (uint256) | [224-255] circuit_version (uint32)
-    if (fnSig.startsWith('privateTransfer(')) {
-        try {
-            const data = fromHex(input.slice(10));
-            if (!hasFullHead(data, 8)) return { fnSig, method: methodOf(fnSig), args: {} };
-            const rootArgs = fnSig.startsWith('privateTransfer(bytes,bytes32[],')
-                ? { roots: decodeRoots(data) }
-                : { root: toHex(data.slice(32, 64)) };
-            const assetId = decodeUint(data, 160);
-            const fee = decodeUint(data, 192);
-            const circuitVersion = decodeUint(data, 224);
-
-            // The array lengths sit at offsets read FROM the calldata, so they
-            // are attacker-chosen: an offset past the end would read a length
-            // of zero out of substituted bytes, and `Number()` on a 32-byte
-            // word silently loses precision well before that. Reported only
-            // when the offset actually lands on a complete length word.
-            const counts: Record<string, number> = {};
-            for (const [name, slot] of [
-                ['nullifiers', 64],
-                ['commitments', 96],
-            ] as const) {
-                const offset = decodeUint(data, slot);
-                if (offset <= BigInt(data.length - 32)) {
-                    counts[name] = Number(decodeUint(data, Number(offset)));
-                }
-            }
-
-            return {
-                fnSig,
-                method: methodOf(fnSig),
-                args: { ...rootArgs, ...counts, assetId, fee, circuitVersion },
-            };
-        } catch {
-            return { fnSig, method: methodOf(fnSig), args: {} };
-        }
-    }
-
-    // commitRelay(bytes32[]) — head: [0-31] offset → commits; then count, items.
-    if (fnSig.startsWith('commitRelay(')) {
-        try {
-            const data = fromHex(input.slice(10));
-            if (!hasFullHead(data, 1)) return { fnSig, method: methodOf(fnSig), args: {} };
-            const offset = decodeUint(data, 0);
-            if (offset > BigInt(data.length - 32))
-                return { fnSig, method: methodOf(fnSig), args: {} };
-            const count = Number(decodeUint(data, Number(offset)));
-            const commits: string[] = [];
-            for (let i = 0; i < count; i++) {
-                const start = Number(offset) + 32 + 32 * i;
-                if (start + 32 > data.length) break;
-                commits.push(toHex(data.slice(start, start + 32)));
-            }
-            return { fnSig, method: methodOf(fnSig), args: { count, commits } };
-        } catch {
-            return { fnSig, method: methodOf(fnSig), args: {} };
-        }
-    }
-
-    // claimRelayFees(uint32,uint256) — head: [0-31] asset_id, [32-63] amount.
-    if (fnSig.startsWith('claimRelayFees(')) {
-        try {
-            const data = fromHex(input.slice(10));
-            if (!hasFullHead(data, 2)) return { fnSig, method: methodOf(fnSig), args: {} };
-            return {
-                fnSig,
-                method: methodOf(fnSig),
-                args: { assetId: decodeUint(data, 0), amount: decodeUint(data, 32) },
             };
         } catch {
             return { fnSig, method: methodOf(fnSig), args: {} };

@@ -82,13 +82,14 @@ export class OrbinumClient {
      */
     readonly ismp: IsmpModule;
     /**
-     * The shielded pool reached from an EVM wallet instead of a Substrate one.
+     * Shielding from an EVM wallet instead of a Substrate one. Spends are not
+     * reachable here: they are submitted unsigned through `shieldedPool`.
      *
      * `null` when `evmRpc` was not configured — the whole group, so a caller
      * checks once rather than per method.
      */
     readonly precompiles: {
-        /** `ShieldedPoolPrecompile` at `0x0801`: shield / unshield / transfer via EVM wallet. */
+        /** `ShieldedPoolPrecompile` at `0x0801`: `shield` via EVM wallet. */
         shieldedPool: ShieldedPoolPrecompile;
         /** Built-in cryptographic precompiles: ECRecover, Keccak-256, Curve25519. */
         crypto: CryptoPrecompiles;

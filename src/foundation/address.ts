@@ -263,28 +263,20 @@ export function addressToAccountIdHex(addr: string): string | null {
     return substrateSs58ToAccountIdHex(addr);
 }
 
-/** Circuit versions whose recipient encoding this library knows. */
-const RECIPIENT_RULES: ReadonlySet<number> = new Set([1, 2, 3]);
-
-/** First circuit version that binds the recipient through `blake2_256`. */
-const RECIPIENT_BLAKE2_FROM = 2;
+/** Circuit versions whose recipient encoding this library knows: unshield v3. */
+const RECIPIENT_RULES: ReadonlySet<number> = new Set([3]);
 
 /**
  * Any address — SS58, EVM H160, or 0x-prefixed AccountId32 hex — as the BN254
  * scalar the unshield circuit takes for its `recipient` public signal.
  *
  * The mapping is circuit-defined, not a convention this library chose: EVM
- * addresses become `H160 ++ [0x00; 12]`, then
- *
- * - circuit v1: the 32 bytes read little-endian, mod BN254_R;
- * - circuit v2 and v3 (memo-bound): `blake2_256(bytes)` read little-endian,
- *   mod BN254_R. v3 changes the spending-key rule, not the recipient one.
- *
- * v1 maps `R` and `R ± r` — two different accounts — to the same scalar, so a
- * copier could redirect a pending unshield to an account nobody controls; v2's
- * hash closes that. Getting any step wrong makes the proof verify against a
- * DIFFERENT recipient. The chain applies the same rule per verifying key
- * (`pallet_zk_verifier::encoding::encode_unshield`).
+ * addresses become `H160 ++ [0x00; 12]`, then `blake2_256(bytes)` is read
+ * little-endian, mod BN254_R. The hash keeps `R` and `R ± r` — two different
+ * accounts — from mapping to the same scalar, so a copier cannot redirect a
+ * pending unshield to an account nobody controls. Getting any step wrong makes
+ * the proof verify against a DIFFERENT recipient. The chain applies the same
+ * rule (`pallet_zk_verifier::encoding::encode_unshield`).
  *
  * Only versions whose rule is known are accepted: a future version could bind
  * the recipient differently, and guessing would prove against the wrong one.
@@ -304,7 +296,5 @@ export function addressToFieldElement(address: string, circuitVersion: number): 
     if (!isHexOfLength(accountIdHex, 32)) {
         throw new Error(`AccountId32 must be 32 bytes of hex: ${accountIdHex}`);
     }
-    const bytes = fromHex(accountIdHex);
-    const bound = circuitVersion >= RECIPIENT_BLAKE2_FROM ? blake2b(bytes, { dkLen: 32 }) : bytes;
-    return bytesToBigintLE(bound) % BN254_R;
+    return bytesToBigintLE(blake2b(fromHex(accountIdHex), { dkLen: 32 })) % BN254_R;
 }

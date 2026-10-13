@@ -31,14 +31,6 @@ export type ScanCommitment = {
 };
 
 /**
- * Circuit version new notes are created under: 2, the memo-bound transfer and
- * unshield circuits. A note carries its own `circuitVersion`; a v1 note (same
- * format) is spent under v2 once the chain retires v1. Callers may pass the
- * chain's active version explicitly.
- */
-export const CURRENT_CIRCUIT_VERSION = 2;
-
-/**
  * What a sender can still say about a note they sent, using only public data.
  *
  * No decryption and no key: the memo travels verbatim, exactly as published.

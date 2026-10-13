@@ -71,9 +71,9 @@ describe('ismp RPC types', () => {
 
 describe('ismp event types', () => {
     it('models DeliveryConfirmed, and it is in the union', () => {
-        // Added in runtime spec 14. The commitment is the POST being confirmed, not the
-        // GET that proved it — those are different messages, and reporting the GET's would
-        // make the event impossible to join to anything.
+        // The commitment is the POST being confirmed, not the GET that proved it — those
+        // are different messages, and reporting the GET's would make the event impossible
+        // to join to anything.
         const confirmed: DeliveryConfirmedEvent = {
             commitment: '0x' + '49'.repeat(32),
             relayer: '0x' + 'aa'.repeat(32),
@@ -89,9 +89,8 @@ describe('ismp event types', () => {
     it('carries a commitment on every message event', () => {
         const commitment = '0x' + '49'.repeat(32);
 
-        // All four gained this field in runtime spec 12. Before it an arrival could not be
-        // attributed to any message and an expiry could not be matched to what expired.
-        // Every other field below arrived in spec 13.
+        // Without it an arrival could not be attributed to any message and an expiry could
+        // not be matched to what expired.
         const received: MessageReceivedEvent = {
             source: 'KUSAMA-4009',
             from: '0x64656d6f2f6d6f64',

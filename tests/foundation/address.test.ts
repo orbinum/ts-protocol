@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { blake2b } from '@noble/hashes/blake2.js';
 import {
     normalizeEvmAddress,
     parseEvmAddress,
@@ -299,15 +300,19 @@ describe('addressToAccountIdHex', () => {
 // ─── addressToFieldElement ────────────────────────────────────────────────────
 
 describe('addressToFieldElement', () => {
-    // The mapping is circuit-defined: H160 ++ [0x00; 12], bytes read
-    // little-endian, reduced mod BN254_R. A wrong scalar makes the proof verify
-    // against a DIFFERENT recipient — funds go to whoever that value names.
-    it('maps an EVM address as H160 zero-padded little-endian', () => {
+    // The mapping is circuit-defined: H160 ++ [0x00; 12], then blake2_256 of the
+    // 32 bytes read little-endian, reduced mod BN254_R. A wrong scalar makes the
+    // proof verify against a DIFFERENT recipient — funds go to whoever that value
+    // names.
+    const blake2Field = (bytes: Uint8Array) =>
+        bytesToBigintLE(blake2b(bytes, { dkLen: 32 })) % BN254_R;
+
+    it('maps an EVM address as the hash of H160 zero-padded', () => {
         const evm = '0x' + '11'.repeat(20);
         const bytes = new Uint8Array(32);
         bytes.set(new Uint8Array(20).fill(0x11), 0); // H160 first, zero tail
 
-        expect(addressToFieldElement(evm, 1)).toBe(bytesToBigintLE(bytes) % BN254_R);
+        expect(addressToFieldElement(evm, 3)).toBe(blake2Field(bytes));
     });
 
     it('maps an SS58 address through its decoded AccountId32', () => {
@@ -320,30 +325,30 @@ describe('addressToFieldElement', () => {
                 .map((b) => parseInt(b, 16))
         );
 
-        expect(addressToFieldElement(ss58, 1)).toBe(bytesToBigintLE(bytes) % BN254_R);
+        expect(addressToFieldElement(ss58, 3)).toBe(blake2Field(bytes));
     });
 
     it('always lands inside the BN254 scalar field', () => {
-        expect(addressToFieldElement('0x' + 'ff'.repeat(20), 1)).toBeLessThan(BN254_R);
+        expect(addressToFieldElement('0x' + 'ff'.repeat(20), 3)).toBeLessThan(BN254_R);
     });
 
     it('throws on an unresolvable address instead of proving against garbage', () => {
-        expect(() => addressToFieldElement('not-an-address', 1)).toThrow(/Cannot resolve/);
+        expect(() => addressToFieldElement('not-an-address', 3)).toThrow(/Cannot resolve/);
     });
 
     // Shared with node (`pallet_zk_verifier::encoding`,
     // `memo_bound_recipient_matches_the_cross_repo_vectors`) and wallet-sdk: a
     // client that disagrees proves against a recipient the chain does not bind.
-    it('hashes the account for circuit v2, matching the cross-repo vectors', () => {
-        expect(addressToFieldElement('0x' + '01'.repeat(32), 2)).toBe(
+    it('matches the cross-repo vectors', () => {
+        expect(addressToFieldElement('0x' + '01'.repeat(32), 3)).toBe(
             12675418817533800860329266028882352101389659889650399640801977044751956446451n
         );
-        expect(addressToFieldElement('0x' + 'ff'.repeat(32), 2)).toBe(
+        expect(addressToFieldElement('0x' + 'ff'.repeat(32), 3)).toBe(
             8504043951613968567912818902905284138154551003293039947668345667160602903262n
         );
     });
 
-    it('tells an account from its R + r alias only in v2', () => {
+    it('tells an account from its R + r alias', () => {
         const r = BN254_R;
         const account = 1n; // AccountId32 with a single low byte set
         const toHex = (v: bigint) =>
@@ -352,25 +357,12 @@ describe('addressToFieldElement', () => {
                 ((v >> BigInt(8 * i)) & 0xffn).toString(16).padStart(2, '0')
             ).join('');
         const [original, alias] = [toHex(account), toHex(account + r)];
-        expect(addressToFieldElement(original, 1)).toBe(addressToFieldElement(alias, 1));
-        expect(addressToFieldElement(original, 2)).not.toBe(addressToFieldElement(alias, 2));
-    });
-
-    // Unshield v3 keeps v2's memo-bound layout (`encode_unshield`): only the
-    // spending-key rule changed, so the recipient must encode identically.
-    it('encodes the recipient for circuit v3 exactly as v2', () => {
-        for (const account of [
-            '0x' + '01'.repeat(32),
-            '0x' + 'ff'.repeat(32),
-            '0x' + 'ab'.repeat(20),
-        ]) {
-            expect(addressToFieldElement(account, 3)).toBe(addressToFieldElement(account, 2));
-        }
+        expect(addressToFieldElement(original, 3)).not.toBe(addressToFieldElement(alias, 3));
     });
 
     it('refuses a circuit version without a known recipient rule', () => {
         const account = '0x' + '01'.repeat(32);
-        for (const version of [0, 4, 1.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        for (const version of [0, 1, 2, 4, 1.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
             expect(() => addressToFieldElement(account, version)).toThrow(/circuit version/);
         }
     });

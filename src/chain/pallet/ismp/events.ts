@@ -51,22 +51,19 @@ export type StateMachineEnum =
 /**
  * Which kind of request an event describes.
  *
- * Carried by `RequestDispatched` (what went out) and `RequestTimedOut` (what expired),
- * both since runtime spec 13. The distinction is not cosmetic: a POST is handed to a
+ * Carried by `RequestDispatched` (what went out) and `RequestTimedOut` (what expired).
+ * The distinction is not cosmetic: a POST is handed to a
  * module on the destination, which may refuse it, while a GET addresses storage and has
  * no receiving module at all — so the two fail, and succeed, in different ways.
  */
 export type RequestKind = 'Post' | 'Get';
 
 /**
- * Absolute unix SECONDS at which a message expires, with **three** distinct states.
- * Conflating any two of them is a bug:
+ * Absolute unix SECONDS at which a message expires:
  *
  *   - `0n`         never expires. Upstream's explicit `if timeout == 0 { 0 }` branch
  *                  (`ismp-2606.1.0/src/dispatcher.rs:132`) — NOT "expired in 1970".
  *                  Rendering it as a date claims the message died decades ago.
- *   - `undefined`  unknown: the block predates runtime spec 13, which is when the
- *                  pallet started emitting it. Absence is a real answer here.
  *   - anything else  a genuine deadline.
  */
 export type TimeoutTimestamp = bigint;
@@ -82,8 +79,7 @@ export type TimeoutTimestamp = bigint;
  * `dest` is the chain the message is ADDRESSED to, not the next hop — Hyperbridge is the
  * route, and the pallet consults the coprocessor on its own.
  *
- * Everything past `commitment` arrived in runtime spec 13. Together they make the event
- * self-sufficient: the request it describes can be rebuilt from these fields alone and
+ * The fields make the event self-sufficient: the request it describes can be rebuilt from these fields alone and
  * hashed back to `commitment` (see `requestCommitment` in `./commitment`), which is what
  * a relayer has to do to prove it.
  */
@@ -133,14 +129,14 @@ export type IsmpRequestEvent = {
  * Rust variant: `RequestTimedOut { dest, commitment }`
  *
  * The commitment is the one `RequestDispatched` recorded, so this closes out that exact
- * request. It was added in runtime spec 12; before that a timeout was unattributable.
+ * request.
  */
 export type RequestTimedOutEvent = {
     dest: StateMachineId;
     commitment: string;
     /**
-     * Which kind expired, added in spec 13. Two different failures: a POST never reached
-     * the destination, a GET's answer never came back.
+     * Which kind expired. Two different failures: a POST never reached the destination,
+     * a GET's answer never came back.
      */
     kind: RequestKind;
     nonce: bigint;
@@ -170,7 +166,7 @@ export type MessageReceivedEvent = {
     bodyLen: number;
     /** The sender's own commitment, which joins this arrival to their `Request`. */
     commitment: string;
-    /** The SENDER's nonce, on their chain — not a counter of ours. Added in spec 13. */
+    /** The SENDER's nonce, on their chain — not a counter of ours. */
     nonce: bigint;
     /** The deadline the sender set. See `TimeoutTimestamp`. */
     timeoutTimestamp: TimeoutTimestamp;
@@ -215,7 +211,7 @@ export type GetResponseReceivedEvent = {
     keys: number;
     found: number;
     commitment: string;
-    /** The chain that was read. Added in spec 13. */
+    /** The chain that was read. */
     dest: StateMachineId;
     /**
      * The block height on the REMOTE chain that the read was proven against.
@@ -327,9 +323,9 @@ export type TimeoutHandledEvent = {
  * Emitted when a message this chain dispatched is proven delivered.
  * Rust variant: `DeliveryConfirmed { commitment, relayer, height }`
  *
- * Added in runtime spec 14, and it is this chain's only witness to its own outbound POST
- * landing: `PostRequestHandled` fires on the DESTINATION, so before this a delivered
- * message and one still in flight were indistinguishable from local state. The protocol
+ * This chain's only witness to its own outbound POST landing: `PostRequestHandled` fires
+ * on the DESTINATION, so without it a delivered message and one still in flight are
+ * indistinguishable from local state. The protocol
  * offers no reply path — upstream #840 removed `PostResponse` — so the proof is a GET
  * that reads the destination's `RequestReceipts` entry and verifies it against a state
  * proof.

@@ -1,10 +1,5 @@
 export { ShieldedPoolPrecompile } from './ShieldedPoolPrecompile';
-export {
-    buildShieldCalldata,
-    buildPrivateTransferCalldata,
-    buildUnshieldCalldata,
-    buildClaimRelayFeesCalldata,
-} from './shieldedPoolCalldata';
+export { buildShieldCalldata } from './shieldedPoolCalldata';
 export { CryptoPrecompiles } from './CryptoPrecompiles';
 export type { EvmTxRequest, EvmSigner, KnownPrecompileInfo } from './types';
 export { PRECOMPILE_ADDR, SP_SEL, KNOWN_PRECOMPILES, getPrecompileLabel } from './addresses';

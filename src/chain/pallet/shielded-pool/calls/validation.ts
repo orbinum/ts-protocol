@@ -1,20 +1,21 @@
 /**
- * Parameter checks shared by the pallet call and the precompile calldata. Both
- * reach the same dispatchable, so they must accept exactly the same values.
+ * Parameter checks for the pallet calls, shared with the precompile's `shield`
+ * calldata: both reach the same dispatchable, so they must accept exactly the
+ * same values.
  *
  * These throw: the parameters are the wallet's own outgoing call, so a bad one
  * is a bug in the caller, not hostile input to tolerate.
  */
-import { MemoFormat } from '../../../protocol/memo/index';
-import { isHexOfLength } from '../../../foundation/encoding/hex';
-import { leHexToBigint } from '../../../foundation/encoding/bytes';
-import { BN254_R } from '../../../foundation/crypto/constants';
-import type { ClaimRelayFeesParams, ShieldParams } from './extrinsicParams';
+import { MemoFormat } from '../../../../protocol/memo/index';
+import { isHexOfLength } from '../../../../foundation/encoding/hex';
+import { leHexToBigint } from '../../../../foundation/encoding/bytes';
+import { BN254_R } from '../../../../foundation/crypto/constants';
+import type { ClaimFeesParams, ShieldParams } from '../types/params';
 
 const U32_MAX = 0xffff_ffff;
 const U128_MAX = (1n << 128n) - 1n;
 
-function assertU32(value: number, field: string): void {
+export function assertU32(value: number, field: string): void {
     if (!Number.isInteger(value) || value < 0 || value > U32_MAX) {
         throw new Error(`${field}: expected a uint32, got ${value}`);
     }
@@ -48,8 +49,8 @@ export function assertMerkleRoots(roots: readonly string[], where: string): void
     });
 }
 
-/** `claim_relay_fees(asset_id: u32, amount: u128)`, with a positive amount. */
-export function assertClaimRelayFeesParams(params: ClaimRelayFeesParams, where: string): void {
+/** `claim_fees(asset_id: u32, amount: u128)`, with a positive amount. */
+export function assertClaimFeesParams(params: ClaimFeesParams, where: string): void {
     assertU32(params.assetId, `${where}.assetId`);
     assertPositiveU128(params.amount, `${where}.amount`);
 }

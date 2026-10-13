@@ -31,16 +31,8 @@ export const PRECOMPILE_ADDR = {
 
 /** Function selectors for `ShieldedPoolPrecompile`. */
 export const SP_SEL = {
-    // shield(uint32,bytes32,bytes,bytes,uint32)                                  → 0xf25897e0  (payable, amount = msg.value)
+    // shield(uint32,bytes32,bytes,bytes,uint32) → 0xf25897e0 (payable, amount = msg.value)
     SHIELD: new Uint8Array([0xf2, 0x58, 0x97, 0xe0]),
-    // privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],uint32,uint256,uint32)  → 0x63d0b9a0 (one root per input)
-    PRIVATE_TRANSFER: new Uint8Array([0x63, 0xd0, 0xb9, 0xa0]),
-    // unshield(bytes,bytes32,bytes32,uint32,uint256,bytes32,uint256,bytes32,bytes,uint32)  → 0x4e505348
-    UNSHIELD: new Uint8Array([0x4e, 0x50, 0x53, 0x48]),
-    // commitRelay(bytes32[])                                                     → 0xc9b235ff
-    COMMIT_RELAY: new Uint8Array([0xc9, 0xb2, 0x35, 0xff]),
-    // claimRelayFees(uint32,uint256)                                             → 0x2a3274dd
-    CLAIM_RELAY_FEES: new Uint8Array([0x2a, 0x32, 0x74, 0xdd]),
 } as const;
 
 // ─── Known Precompiles registry ───────────────────────────────────────────────
@@ -69,15 +61,6 @@ export const KNOWN_PRECOMPILES: Record<string, KnownPrecompileInfo> = {
         name: 'ShieldedPool',
         functions: {
             f25897e0: 'shield(uint32,bytes32,bytes,bytes,uint32)',
-            '9feb22ea': 'shield(uint32,bytes32,bytes)',
-            '63d0b9a0':
-                'privateTransfer(bytes,bytes32[],bytes32[],bytes32[],bytes[],uint32,uint256,uint32)',
-            '66ed2cd4':
-                'privateTransfer(bytes,bytes32,bytes32[],bytes32[],bytes[],uint32,uint256,uint32)',
-            '4e505348':
-                'unshield(bytes,bytes32,bytes32,uint32,uint256,bytes32,uint256,bytes32,bytes,uint32)',
-            c9b235ff: 'commitRelay(bytes32[])',
-            '2a3274dd': 'claimRelayFees(uint32,uint256)',
         },
     },
 };

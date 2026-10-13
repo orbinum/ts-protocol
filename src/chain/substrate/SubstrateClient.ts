@@ -122,7 +122,7 @@ export class SubstrateClient {
 
     /**
      * Performs a raw JSON-RPC request. Use this for custom Orbinum RPCs
-     * (`privacy_*`, `zkVerifier_*`, `relayer_*`, etc.).
+     * (`privacy_*`, `zkVerifier_*`, `ismp_*`, etc.).
      */
     async request<T>(method: string, params: unknown[] = []): Promise<T> {
         return this._papi._request<T, unknown[]>(method, params);
@@ -330,7 +330,7 @@ export class SubstrateClient {
 
     /**
      * Submits a bare (unsigned) extrinsic and waits for finalization.
-     * Used for gasless private_transfer and unshield transactions.
+     * Used for private_transfer and unshield, which the runtime accepts only unsigned.
      * The bare tx bytes are produced by `tx.getBareTx()` from polkadot-api.
      */
     async submitUnsignedAndWatch(bareTx: Uint8Array): Promise<TxFinalizedPayload> {

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-    assertClaimRelayFeesParams,
+    assertClaimFeesParams,
     assertMerkleRoots,
     assertShieldParams,
-} from '../../../../src/chain/pallet/shielded-pool/validation';
+} from '../../../../src/chain/pallet/shielded-pool/calls/index';
 import { BN254_R } from '../../../../src/foundation/crypto/constants';
 import { commitmentHexOf } from '../../../../src/foundation/encoding/bytes';
 
@@ -38,20 +38,20 @@ describe('assertMerkleRoots', () => {
     });
 });
 
-/** `claim_relay_fees(asset_id: u32, amount: u128)`; both call paths use this check. */
-describe('assertClaimRelayFeesParams', () => {
+/** `claim_fees(asset_id: u32, amount: u128)`. */
+describe('assertClaimFeesParams', () => {
     it('accepts the full valid range', () => {
         for (const params of [
             { assetId: 0, amount: 1n },
             { assetId: 0xffff_ffff, amount: (1n << 128n) - 1n },
         ]) {
-            expect(() => assertClaimRelayFeesParams(params, 'claim')).not.toThrow();
+            expect(() => assertClaimFeesParams(params, 'claim')).not.toThrow();
         }
     });
 
     it('refuses an amount that is not positive or does not fit u128', () => {
         for (const amount of [0n, -1n, 1n << 128n]) {
-            expect(() => assertClaimRelayFeesParams({ assetId: 0, amount }, 'claim')).toThrow(
+            expect(() => assertClaimFeesParams({ assetId: 0, amount }, 'claim')).toThrow(
                 'claim.amount'
             );
         }
@@ -59,7 +59,7 @@ describe('assertClaimRelayFeesParams', () => {
 
     it('refuses an asset id that is not a u32', () => {
         for (const assetId of [-1, 2 ** 32, 1.5, Number.NaN]) {
-            expect(() => assertClaimRelayFeesParams({ assetId, amount: 1n }, 'claim')).toThrow(
+            expect(() => assertClaimFeesParams({ assetId, amount: 1n }, 'claim')).toThrow(
                 'claim.assetId'
             );
         }

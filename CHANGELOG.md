@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-13
+
+**Breaking** — for runtime spec 19 / transaction version 7: the relayer layer
+is gone. Spends are accepted only unsigned, every spend's fee is credited to
+the block author's validator account, and the validator claims it with
+`claim_fees`. The EVM precompile keeps `shield` only. The SDK supports runtime
+spec 19 and later only: decoding of earlier blocks, calls, events and calldata
+is removed.
+
+### Added
+
+- `ShieldedPoolModule.claimFees(params, signer, options?)` →
+  `ShieldedPool.claim_fees(asset_id, amount)`: pays the signer's own pending
+  fees to the signer. `ClaimFeesParams`; amounts above the pending balance fail
+  with `InsufficientPendingFees` (classified `amount`).
+- `ShieldedPoolModule.pendingFees(account, assetId)` reads
+  `ShieldedPool.PendingFees` (SS58 or AccountId32 hex) as a `bigint`.
+- `ShieldedPoolModule.minSpendFee()` reads the runtime constant
+  `ShieldedPool.MinSpendFee`.
+- Events `FeeCredited` and `FeesClaimed` (`FeeCreditedEvent`,
+  `FeesClaimedEvent`, `ShieldedPoolEvent` variants) and `ClaimFeesArgs`;
+  `mapExtrinsicArgs` maps `claim_fees`, `mapZkEventData` maps `feeCredited` /
+  `feesClaimed`.
+
+### Changed
+
+- `ShieldedPoolModule.privateTransfer(params, options?)` and
+  `unshield(params, options?)` take no signer and always submit unsigned: the
+  runtime refuses a signed spend with `BadOrigin`. The second argument is now
+  the submit options.
+- `MIN_GASLESS_FEE` mirrors `ShieldedPool.MinSpendFee` (a runtime constant,
+  0.001 ORB).
+- `ShieldArgs.proof` / `circuitVersion` and `ShieldOperation.proof` /
+  `circuitVersion` are required.
+- `mapExtrinsicArgs` maps `private_transfer` to `merkle_roots` only.
+- `decodePrecompileCalldata` decodes `shield(uint32,bytes32,bytes,bytes,uint32)`
+  only, and always returns its `circuitVersion`; `PrecompileMethod` is
+  `'shield'`.
+- `addressToFieldElement` accepts unshield v3 only and always hashes the
+  recipient with `blake2_256`; any other version throws.
+- `EvmBlock.miner` is the zero address from spec 19: priority tips go to the
+  author's validator account.
+
+### Removed
+
+- `OrbinumClient.relayerStatus`, `RelayerStatusModule` and `RelayerInfo` (the
+  `relayer_*` RPCs no longer exist).
+- `ShieldedPoolModule.claimRelayFees`, `ClaimRelayFeesParams`.
+- `ShieldedPoolPrecompile.privateTransfer`, `unshield`, `claimRelayFees`, their
+  `build*Calldata` and `estimate*Gas` methods, and the exported
+  `buildPrivateTransferCalldata`, `buildUnshieldCalldata`,
+  `buildClaimRelayFeesCalldata`.
+- Classification of the relayer errors `RelayerNotRegistered`, `NotRegistered`
+  and `TooManyCommits`, and of `CommitmentNotFound` and `AssetIdMismatch`,
+  which the pallet no longer has (now `unknown`).
+- `CURRENT_CIRCUIT_VERSION`: a note's spend circuit version is the chain's
+  active transfer/unshield version, read at build time, not a constant.
+- Support for runtime specs before 19:
+  - `CommitRelayArgs`, `ClaimRelayFeesArgs`, `RelayFeesClaimedEvent` and the
+    `commitRelay` / `claimRelayFees` / `RelayFeesClaimed` union variants;
+  - `mapExtrinsicArgs` for `commit_relay`, `claim_relay_fees` and the
+    single-root `private_transfer` (`merkle_root`); `mapZkEventData` for
+    `relayFeesClaimed`;
+  - the precompile selectors `shield(uint32,bytes32,bytes)` (`0x9feb22ea`),
+    both `privateTransfer`, `unshield`, `commitRelay` and `claimRelayFees` from
+    `KNOWN_PRECOMPILES` and the decoder; `SP_SEL.PRIVATE_TRANSFER`, `UNSHIELD`,
+    `COMMIT_RELAY`, `CLAIM_RELAY_FEES`;
+  - the circuit v1 and v2 unshield recipient rules (`addressToFieldElement`
+    throws for them).
+
 ## [0.9.0] - 2026-10-10
 
 Note disclosures can no longer claim a value inflated by the field modulus, and

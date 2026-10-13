@@ -123,31 +123,34 @@ describe('mapExtrinsicArgs — shieldedPool', () => {
         expect(result['commitment']).toBe('0x' + 'aa'.repeat(32));
     });
 
-    it('maps shield with positional keys', () => {
+    it('maps shield with positional keys, proof and circuit version included', () => {
         const result = mapExtrinsicArgs(
             'shieldedPool',
             'shield',
-            positional(1, '5000', '0xcommit', '0xmemo')
+            positional(1, '5000', '0xcommit', '0xmemo', '0xproof', 1)
         );
-        expect(result['asset_id']).toBe(1);
-        expect(result['amount']).toBe('5000');
-        expect(result['commitment']).toBe('0xcommit');
-        expect(result['encrypted_memo']).toBe('0xmemo');
+        expect(result).toEqual({
+            asset_id: 1,
+            amount: '5000',
+            commitment: '0xcommit',
+            encrypted_memo: '0xmemo',
+            proof: '0xproof',
+            circuit_version: 1,
+        });
     });
 
     it('maps private_transfer with positional keys', () => {
         const result = mapExtrinsicArgs(
             'shieldedPool',
             'private_transfer',
-            positional('0xproof', '0xroot', ['0xnull'], ['0xcommit'], ['0xmemo'])
+            positional('0xproof', ['0xr0', '0xr1'], ['0xnull'], ['0xcommit'], ['0xmemo'])
         );
         expect(result['proof']).toBe('0xproof');
-        expect(result['merkle_root']).toBe('0xroot');
         expect(result['nullifiers']).toEqual(['0xnull']);
         expect(result['commitments']).toEqual(['0xcommit']);
     });
 
-    it('maps private_transfer with one root per input (spec 18+)', () => {
+    it('maps private_transfer with one root per input', () => {
         const positionalResult = mapExtrinsicArgs(
             'shieldedPool',
             'private_transfer',
@@ -163,29 +166,20 @@ describe('mapExtrinsicArgs — shieldedPool', () => {
         expect(named['merkle_roots']).toEqual(['0xr0', '0xr1']);
     });
 
-    it('keeps the single merkle_root of an older private_transfer', () => {
-        const result = mapExtrinsicArgs('shieldedPool', 'private_transfer', {
-            proof: '0xp',
-            merkle_root: '0xr',
-        });
-        expect(result['merkle_root']).toBe('0xr');
-        expect(result).not.toHaveProperty('merkle_roots');
-    });
-
     it('maps private_transfer asset, fee and circuit version', () => {
         const result = mapExtrinsicArgs(
             'shieldedPool',
             'private_transfer',
-            positional('0xp', '0xr', [], [], [], 0, '10', 2)
+            positional('0xp', ['0xr', '0xr'], [], [], [], 0, '10', 3)
         );
-        expect(result).toMatchObject({ asset_id: 0, fee: '10', circuit_version: 2 });
+        expect(result).toMatchObject({ asset_id: 0, fee: '10', circuit_version: 3 });
     });
 
     it('maps unshield with positional keys, fee and circuit version included', () => {
         const result = mapExtrinsicArgs(
             'shieldedPool',
             'unshield',
-            positional('0xproof', '0xroot', '0xnull', 0, '999', '0xrec', '10', '0xchg', '0x', 2)
+            positional('0xproof', '0xroot', '0xnull', 0, '999', '0xrec', '10', '0xchg', '0x', 3)
         );
         expect(result).toEqual({
             proof: '0xproof',
@@ -197,29 +191,31 @@ describe('mapExtrinsicArgs — shieldedPool', () => {
             fee: '10',
             change_commitment: '0xchg',
             change_encrypted_memo: '0x',
-            circuit_version: 2,
+            circuit_version: 3,
         });
     });
 
-    it('maps the relayer calls', () => {
-        expect(mapExtrinsicArgs('shieldedPool', 'commit_relay', positional(['0xc']))).toEqual({
-            commits: ['0xc'],
+    it('maps claim_fees', () => {
+        expect(mapExtrinsicArgs('shieldedPool', 'claim_fees', positional(0, '4000'))).toEqual({
+            asset_id: 0,
+            amount: '4000',
         });
-        expect(mapExtrinsicArgs('shieldedPool', 'claim_relay_fees', positional(0, '4000'))).toEqual(
-            { asset_id: 0, amount: '4000' }
-        );
+        expect(
+            mapExtrinsicArgs('shieldedPool', 'claimFees', named({ assetId: 2, amount: '7' }))
+        ).toEqual({ asset_id: 2, amount: '7' });
     });
 
     it('maps shieldBatch with array operations', () => {
         const ops = [
-            [0, '1000', '0xcommit', '0xmemo'],
-            [1, '2000', '0xcommit2', '0xmemo2'],
+            [0, '1000', '0xcommit', '0xmemo', '0xproof', 1],
+            [1, '2000', '0xcommit2', '0xmemo2', '0xproof2', 1],
         ];
         const result = mapExtrinsicArgs('shieldedPool', 'shieldBatch', positional(ops));
         const mapped = result['operations'] as Array<Record<string, unknown>>;
         expect(mapped).toHaveLength(2);
         expect(mapped[0]!['asset_id']).toBe(0);
         expect(mapped[1]!['amount']).toBe('2000');
+        expect(mapped[1]).toMatchObject({ proof: '0xproof2', circuit_version: 1 });
     });
 });
 
@@ -358,19 +354,26 @@ describe('mapZkEventData — shielded', () => {
         expect(result['change_index']).toBe(7);
     });
 
-    it('maps treeSealed and relayFeesClaimed events', () => {
+    it('maps treeSealed event', () => {
         expect(mapZkEventData('treeSealed', positional(3, '0xroot', 0, 1048576))).toEqual({
             tree_id: 3,
             final_root: '0xroot',
             first_leaf_index: 0,
             leaf_count: 1048576,
         });
-        const claimed = mapZkEventData(
-            'relayFeesClaimed',
-            named({ who: '0xA', to: '0xB', asset_id: 0, amount: '4000' })
-        );
-        expect(claimed).toMatchObject({ who: '0xA', to: '0xB', asset_id: 0 });
-        expect(claimed['amount']).toMatch(/\d/); // formatted
+    });
+
+    it('maps feeCredited and feesClaimed events', () => {
+        for (const method of ['FeeCredited', 'feesClaimed']) {
+            const positionalMapped = mapZkEventData(method, positional('0xV', 1, '4000'));
+            expect(positionalMapped).toMatchObject({ validator: '0xV', asset_id: 1 });
+            expect(positionalMapped['amount']).toMatch(/\d/); // formatted
+            const namedMapped = mapZkEventData(
+                method,
+                named({ validator: '0xV', asset_id: 0, amount: '4000' })
+            );
+            expect(namedMapped).toMatchObject({ validator: '0xV', asset_id: 0 });
+        }
     });
 
     it('maps merkleRootUpdated event (positional keys)', () => {
@@ -514,7 +517,7 @@ describe('mapZkEventData — sincronía con los eventos del pallet', () => {
 describe('mapExtrinsicArgs — camelCase decoders', () => {
     const roots = ['0x' + '01'.repeat(32), '0x' + '02'.repeat(32)];
 
-    it('maps a spec-18 private transfer decoded in camelCase', () => {
+    it('maps a private transfer decoded in camelCase', () => {
         const mapped = mapExtrinsicArgs('shieldedPool', 'privateTransfer', {
             proof: '0xaa',
             merkleRoots: roots,
@@ -531,20 +534,5 @@ describe('mapExtrinsicArgs — camelCase decoders', () => {
             asset_id: 0,
             circuit_version: 3,
         });
-    });
-
-    it('maps an older single-root transfer decoded in camelCase', () => {
-        const mapped = mapExtrinsicArgs('shieldedPool', 'privateTransfer', {
-            proof: '0xaa',
-            merkleRoot: roots[0],
-            nullifiers: [],
-            commitments: [],
-            encryptedMemos: [],
-            assetId: 0,
-            fee: '0',
-            circuitVersion: 2,
-        });
-        expect(mapped['merkle_root']).toBe(roots[0]);
-        expect(mapped['merkle_roots']).toBeUndefined();
     });
 });

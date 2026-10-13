@@ -85,7 +85,10 @@ export interface EvmBlock {
     gasUsed: string;
     /** Block gas limit, as a decimal string. */
     gasLimit: string;
-    /** Address of the block author / fee recipient. */
+    /**
+     * The block's `coinbase`: the zero address. Priority tips go to the
+     * author's validator account, which has no H160.
+     */
     miner: string;
     /** 0x-prefixed hash of the parent block. */
     parentHash: string;

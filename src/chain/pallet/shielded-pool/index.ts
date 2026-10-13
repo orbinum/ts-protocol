@@ -1,5 +1,5 @@
 export { ShieldedPoolModule } from './ShieldedPoolModule';
-export { shieldCallArgs, shieldBatchCallArgs } from './callArgs';
+export { shieldCallArgs, shieldBatchCallArgs } from './calls/index';
 export {
     extractPalletError,
     isAlreadySpentError,
@@ -18,41 +18,4 @@ export {
     NATIVE_ASSET_ID,
     isNativeAsset,
 } from './constants';
-export type {
-    ShieldParams,
-    UnshieldParams,
-    PrivateTransferInput,
-    PrivateTransferOutput,
-    PrivateTransferParams,
-    ShieldBatchItem,
-    ShieldBatchParams,
-    ClaimRelayFeesParams,
-} from './extrinsicParams';
-export type {
-    ShieldedEvent,
-    NullifiersSpentEvent,
-    CommitmentsInsertedEvent,
-    UnshieldedEvent,
-    MerkleRootUpdatedEvent,
-    AssetRegisteredEvent,
-    AssetVerifiedEvent,
-    AssetUnverifiedEvent,
-    RelayFeesClaimedEvent,
-    ShieldedPoolEvent,
-} from './events';
-export type {
-    Bytes32,
-    ShieldOperation,
-    ShieldArgs,
-    ShieldBatchArgs,
-    RawTransferInput,
-    RawTransferOutput,
-    PrivateTransferArgs,
-    UnshieldArgs,
-    RegisterAssetArgs,
-    VerifyAssetArgs,
-    UnverifyAssetArgs,
-    CommitRelayArgs,
-    ClaimRelayFeesArgs,
-    ShieldedPoolCall,
-} from './extrinsics';
+export type * from './types/index';

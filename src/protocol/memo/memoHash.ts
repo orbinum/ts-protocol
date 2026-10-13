@@ -1,6 +1,6 @@
 /**
  * `memo_hash`: the public input that binds a spend's encrypted memos to its
- * proof (transfer / unshield circuit v2).
+ * transfer or unshield proof.
  *
  * A memo carries a note's secrets but is not otherwise part of the proven
  * statement, so without this anyone who saw a pending spend could swap its memos

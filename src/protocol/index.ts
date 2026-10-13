@@ -21,4 +21,3 @@ export * from './disclosure/index';
 export * from './spend/index';
 export * from './merkle/index';
 export type { MerkleTreeInfo, ScanCommitment, NoteFacts } from './types';
-export { CURRENT_CIRCUIT_VERSION } from './types';

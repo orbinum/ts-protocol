@@ -27,21 +27,15 @@ export type ShieldParams = {
 };
 
 /**
- * How the relay fee recipient is decided.
+ * Who is paid a spend's fee.
  *
- * It is not a parameter anywhere in this module: the chain reads it from the
- * dispatch origin, which calldata cannot influence. A `relayer` field would be an
- * unauthenticated claim — anyone could take a propagated proof, resubmit it
- * naming themselves, and collect a fee they never paid for.
+ * Not a parameter anywhere in this module: `unshield` and `private_transfer`
+ * are accepted only unsigned, and the runtime credits every spend's `fee` to
+ * the validator account of the block's author (`FeeCredited`). The validator
+ * withdraws it later with `claim_fees`.
  *
- * | Submitted via | Credited |
- * |---|---|
- * | EVM precompile | whoever signed that EVM transaction and paid its gas |
- * | Signed extrinsic | the signer's registered EVM address |
- * | Unsigned extrinsic | the block author |
- *
- * `fee` below still matters: it is a ZK public input, so it cannot be altered
- * without regenerating the proof. Only the *recipient* moved to the origin.
+ * `fee` is a ZK public input, so it cannot be altered without regenerating the
+ * proof; it must be at least the runtime's `MinSpendFee`.
  */
 
 /** Parameters for shieldedPool.unshield — withdraws from the pool to a clear address. */
@@ -58,7 +52,7 @@ export type UnshieldParams = {
     amount: bigint;
     /** SS58 or 0x-prefixed 32-byte address */
     recipientAddress: string;
-    /** Gasless fee in planck (default 0n; note_value == amount + fee + changeValue in circuit) */
+    /** Spend fee in planck (default 0n; note_value == amount + fee + changeValue in circuit). */
     fee?: bigint;
     /**
      * 0x-prefixed 32-byte change note commitment hex.
@@ -105,8 +99,7 @@ export type PrivateTransferParams = {
     merkleRoots: [string, string];
     /** Asset ID being transferred (public input of the proof) */
     assetId: number;
-    /** Gasless fee in planck (default 0n; input_sum == output_sum + fee in circuit).
-     *  The fee is paid to the block author (validator) by the pallet runtime. */
+    /** Spend fee in planck (default 0n; input_sum == output_sum + fee in circuit). */
     fee?: bigint;
     /** Circuit version the input notes were created under. Verified against that version's VK. */
     circuitVersion: number;
@@ -122,14 +115,12 @@ export type ShieldBatchParams = {
 };
 
 /**
- * Parameters for shieldedPool.claimRelayFees — pays the caller's pending relay
- * fees out of the pool, publicly. A signed claimant is paid at the account of
- * its registered EVM address (or itself if unregistered); an EVM caller at the
- * account of its own address.
+ * Parameters for shieldedPool.claimFees — pays the signer's own pending spend
+ * fees out of the pool to the signer, publicly.
  */
-export type ClaimRelayFeesParams = {
+export type ClaimFeesParams = {
     /** Asset the fees accrued in. */
     assetId: number;
-    /** Amount to claim, in planck; at most the claimant's pending fees. */
+    /** Amount to claim, in planck; at most the signer's pending fees. */
     amount: bigint;
 };

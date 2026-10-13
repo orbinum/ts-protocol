@@ -1,5 +1,6 @@
 /**
  * Calldata for the shielded-pool precompile: params in, ABI-encoded hex out.
+ * The precompile's only call is `shield`.
  *
  * Kept apart from `ShieldedPoolPrecompile` because building calldata needs no
  * chain connection — it is a pure function of the params. The class owns the
@@ -16,18 +17,8 @@
  * user cannot act on, so every value is refused HERE, at the last point where
  * the field name is still known and can go in the error message.
  */
-import type {
-    ShieldParams,
-    UnshieldParams,
-    PrivateTransferParams,
-    ClaimRelayFeesParams,
-} from '../../pallet/shielded-pool/extrinsicParams';
-import {
-    assertClaimRelayFeesParams,
-    assertMerkleRoots,
-    assertShieldParams,
-} from '../../pallet/shielded-pool/validation';
-import { MemoFormat } from '../../../protocol/memo/index';
+import type { ShieldParams } from '../../pallet/shielded-pool/types/index';
+import { assertShieldParams } from '../../pallet/shielded-pool/calls/index';
 import { fromHex, isHexOfLength } from '../../../foundation/encoding/hex';
 import { encodeHex } from './abi';
 import { SP_SEL } from './addresses';
@@ -62,21 +53,6 @@ function uint32(value: number, field: string): bigint {
     return BigInt(value);
 }
 
-/**
- * A 32-byte AccountId32 slot from a recipient address.
- *
- * Short input is right-padded, which is what an `EeSuffix` address is: an H160
- * followed by twelve zero bytes. Anything LONGER is refused instead of being
- * truncated — silently dropping the tail would pay a different account.
- */
-function accountId32(address: string, field: string): Uint8Array {
-    const raw = address.startsWith('0x') ? address.slice(2) : address;
-    if (raw.length > 64) {
-        throw new Error(`${field}: expected at most 32 bytes, got ${raw.length / 2}`);
-    }
-    return bytes32('0x' + raw.padEnd(64, '0'), field);
-}
-
 // ─── Builders ────────────────────────────────────────────────────────────────
 
 /**
@@ -97,102 +73,5 @@ export function buildShieldCalldata(params: ShieldParams): string {
         { type: 'bytes', value: params.encryptedMemo },
         { type: 'bytes', value: params.proof },
         { type: 'uint', value: uint32(params.circuitVersion, 'buildShieldCalldata.circuitVersion') }
-    );
-}
-
-/**
- * Calldata for
- * `privateTransfer(bytes, bytes32[], bytes32[], bytes32[], bytes[], uint32, uint256, uint32)`.
- *
- * Eight arguments: the proof, the two roots (one per input), the nullifiers,
- * commitments and memos, the asset, the fee and the circuit version. The
- * precompile answers only to `0x63d0b9a0`.
- */
-export function buildPrivateTransferCalldata(params: PrivateTransferParams): string {
-    const nullifiers = params.inputs.map((input, i) =>
-        bytes32(input.nullifier, `buildPrivateTransferCalldata.inputs[${i}].nullifier`)
-    );
-    const commitments = params.outputs.map((output, i) =>
-        bytes32(output.commitment, `buildPrivateTransferCalldata.outputs[${i}].commitment`)
-    );
-    const memos = params.outputs.map((output, i) => {
-        MemoFormat.validate(
-            output.encryptedMemo,
-            `buildPrivateTransferCalldata.outputs[${i}].encryptedMemo`
-        );
-        return output.encryptedMemo;
-    });
-    assertMerkleRoots(params.merkleRoots, 'buildPrivateTransferCalldata.merkleRoots');
-    const roots = params.merkleRoots.map((root, i) =>
-        bytes32(root, `buildPrivateTransferCalldata.merkleRoots[${i}]`)
-    );
-
-    return encodeHex(
-        SP_SEL.PRIVATE_TRANSFER,
-        { type: 'bytes', value: params.proof },
-        { type: 'bytes32[]', value: roots },
-        { type: 'bytes32[]', value: nullifiers },
-        { type: 'bytes32[]', value: commitments },
-        { type: 'bytes[]', value: memos },
-        { type: 'uint', value: uint32(params.assetId, 'buildPrivateTransferCalldata.assetId') },
-        { type: 'uint', value: params.fee ?? 0n },
-        {
-            type: 'uint',
-            value: uint32(params.circuitVersion, 'buildPrivateTransferCalldata.circuitVersion'),
-        }
-    );
-}
-
-/**
- * Calldata for `unshield(...)`.
- *
- * `recipientAddress` is a full 32-byte AccountId32 — a Substrate account, or an
- * EeSuffix-derived one (`H160 ++ [0x00; 12]`). A total unshield leaves no
- * change, which is encoded as a zero commitment and an empty memo rather than
- * as an absent field.
- */
-export function buildUnshieldCalldata(params: UnshieldParams): string {
-    const root = bytes32(params.merkleRoot, 'buildUnshieldCalldata.merkleRoot');
-    const nullifier = bytes32(params.nullifier, 'buildUnshieldCalldata.nullifier');
-    const recipient = accountId32(
-        params.recipientAddress,
-        'buildUnshieldCalldata.recipientAddress'
-    );
-
-    const changeCommitment = bytes32(
-        params.changeCommitment ?? '0x' + '00'.repeat(32),
-        'buildUnshieldCalldata.changeCommitment'
-    );
-    const changeEncryptedMemo = params.changeEncryptedMemo ?? new Uint8Array();
-
-    return encodeHex(
-        SP_SEL.UNSHIELD,
-        { type: 'bytes', value: params.proof },
-        { type: 'bytes32', value: root },
-        { type: 'bytes32', value: nullifier },
-        { type: 'uint', value: uint32(params.assetId, 'buildUnshieldCalldata.assetId') },
-        { type: 'uint', value: params.amount },
-        { type: 'bytes32', value: recipient },
-        { type: 'uint', value: params.fee ?? 0n },
-        { type: 'bytes32', value: changeCommitment },
-        { type: 'bytes', value: changeEncryptedMemo },
-        {
-            type: 'uint',
-            value: uint32(params.circuitVersion, 'buildUnshieldCalldata.circuitVersion'),
-        }
-    );
-}
-
-/**
- * Calldata for `claimRelayFees(uint32,uint256)`: pays the caller's pending relay
- * fees out of the pool to the account of its EVM address. No proof — the claim
- * is public and bounded by the caller's own pending balance.
- */
-export function buildClaimRelayFeesCalldata(params: ClaimRelayFeesParams): string {
-    assertClaimRelayFeesParams(params, 'buildClaimRelayFeesCalldata');
-    return encodeHex(
-        SP_SEL.CLAIM_RELAY_FEES,
-        { type: 'uint', value: uint32(params.assetId, 'buildShieldCalldata.assetId') },
-        { type: 'uint', value: params.amount }
     );
 }

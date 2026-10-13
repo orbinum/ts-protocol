@@ -5,7 +5,6 @@ import { ShieldedPoolModule } from '../pallet/shielded-pool/ShieldedPoolModule';
 import { ChainModule } from '../rpc/ChainModule';
 import { PrivacyModule } from '../rpc/PrivacyModule';
 import { ZkVerifierModule } from '../pallet/zk-verifier/ZkVerifierModule';
-import { RelayerStatusModule } from '../pallet/relayer/RelayerStatusModule';
 import { IsmpModule } from '../pallet/ismp/IsmpModule';
 import { ShieldedPoolPrecompile } from '../evm/precompiles/ShieldedPoolPrecompile';
 import { CryptoPrecompiles } from '../evm/precompiles/CryptoPrecompiles';
@@ -76,8 +75,6 @@ export class OrbinumClient {
      * resolving pulls in the prover.
      */
     readonly zkVerifier: ZkVerifierModule;
-    /** Typed access to `relayer_*` RPC endpoints (registry lookup and pending fee queries). */
-    readonly relayerStatus: RelayerStatusModule;
     /**
      * Typed access to `ismp_*` RPC endpoints — cross-chain requests and the height each
      * counterparty channel has proven. Read-only: dispatching is an extrinsic, and a
@@ -85,13 +82,14 @@ export class OrbinumClient {
      */
     readonly ismp: IsmpModule;
     /**
-     * The shielded pool reached from an EVM wallet instead of a Substrate one.
+     * Shielding from an EVM wallet instead of a Substrate one. Spends are not
+     * reachable here: they are submitted unsigned through `shieldedPool`.
      *
      * `null` when `evmRpc` was not configured — the whole group, so a caller
      * checks once rather than per method.
      */
     readonly precompiles: {
-        /** `ShieldedPoolPrecompile` at `0x0801`: shield / unshield / transfer via EVM wallet. */
+        /** `ShieldedPoolPrecompile` at `0x0801`: `shield` via EVM wallet. */
         shieldedPool: ShieldedPoolPrecompile;
         /** Built-in cryptographic precompiles: ECRecover, Keccak-256, Curve25519. */
         crypto: CryptoPrecompiles;
@@ -106,7 +104,6 @@ export class OrbinumClient {
         this.privacy = new PrivacyModule(substrate);
         this.chain = new ChainModule(substrate);
         this.zkVerifier = new ZkVerifierModule(substrate);
-        this.relayerStatus = new RelayerStatusModule(substrate);
         this.ismp = new IsmpModule(substrate);
         this.precompiles = evm
             ? {

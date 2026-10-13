@@ -122,7 +122,7 @@ export class SubstrateClient {
 
     /**
      * Performs a raw JSON-RPC request. Use this for custom Orbinum RPCs
-     * (`privacy_*`, `zkVerifier_*`, `relayer_*`, etc.).
+     * (`privacy_*`, `zkVerifier_*`, `ismp_*`, etc.).
      */
     async request<T>(method: string, params: unknown[] = []): Promise<T> {
         return this._papi._request<T, unknown[]>(method, params);

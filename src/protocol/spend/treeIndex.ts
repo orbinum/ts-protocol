@@ -52,15 +52,12 @@ export function isValidLeafIndex(leafIndex: number | null | undefined): leafInde
 }
 
 /**
- * Forest tree a note belongs to.
+ * Forest tree a note belongs to; tree 0 for a note with no valid `leafIndex`.
  *
- * Falls back to tree 0 for a missing or malformed `leafIndex`. Both cases are
- * expected rather than defensive noise:
- *
- *   - Notes persisted before the forest upgrade carry no index, and they all
- *     predate the first seal, so tree 0 is the correct answer.
- *   - The index originates in an indexer scan hint, which is untrusted — see
- *     {@link isValidLeafIndex}.
+ * The index originates in an indexer scan hint, which is untrusted — see
+ * {@link isValidLeafIndex}. Nothing about spending depends on the answer: a
+ * spend proves each input against its own root, so the tree only steers which
+ * pair coin selection prefers.
  */
 export function treeIdOf(note: { leafIndex?: number }): number {
     const idx = note.leafIndex;

@@ -81,9 +81,6 @@ const MAX_SLIP_ENVELOPE_SIZE = 4096;
  * refuses a long one. It is the bound a TEST checks the wire format against,
  * because a slip that outgrows a QR stops being scannable without failing:
  * the encoder still produces it and no error names the reason.
- *
- * Lived in the note-transfer codec until that was removed; kept here because
- * this is the format that has to fit.
  */
 export const QR_SINGLE_CODE_MAX_CHARS = 1800;
 
@@ -257,6 +254,13 @@ function slipChecksum(payload: string): string {
     return toHex(digest.slice(0, 4)).slice(2);
 }
 
+/**
+ * Longest `orbslip1:` string a maximum-size envelope encodes to: the scheme,
+ * base64url of its `0x`-prefixed hex, `:` and the 8-char checksum.
+ */
+const MAX_SLIP_TEXT_LENGTH =
+    PAYMENT_SLIP_SCHEME.length + Math.ceil(((2 + MAX_SLIP_ENVELOPE_SIZE * 2) * 4) / 3) + 1 + 8;
+
 /** Encode a sealed slip envelope into a shareable `orbslip1:` string. */
 export function encodePaymentSlip(envelope: Uint8Array): string {
     const payload = base64UrlEncode(toHex(envelope));
@@ -268,6 +272,8 @@ export function encodePaymentSlip(envelope: Uint8Array): string {
  * scheme, a bad checksum (mistyped/truncated), or malformed payload returns null.
  */
 export function decodePaymentSlip(text: string): Uint8Array | null {
+    // Refused before the checksum hashes it: a pasted string can be any size.
+    if (text.length > MAX_SLIP_TEXT_LENGTH) return null;
     if (!text.startsWith(PAYMENT_SLIP_SCHEME)) return null;
     const rest = text.slice(PAYMENT_SLIP_SCHEME.length);
     const sep = rest.lastIndexOf(':');

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ShieldedPoolPrecompile } from '../../../src/chain/evm/precompiles/ShieldedPoolPrecompile';
+import { buildShieldCalldata } from '../../../src/chain/evm/precompiles/shieldedPoolCalldata';
 import { SP_SEL, PRECOMPILE_ADDR } from '../../../src/chain/evm/precompiles/addresses';
 import { toHex } from '../../../src/foundation/encoding/hex';
 import type { EvmClient } from '../../../src/chain/evm/EvmClient';
@@ -33,29 +34,25 @@ const SHIELD_PARAMS: ShieldParams = {
 
 // ─── buildShieldCalldata ──────────────────────────────────────────────────────
 
-describe('ShieldedPoolPrecompile.buildShieldCalldata', () => {
+describe('buildShieldCalldata', () => {
     it('starts with SHIELD selector', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const calldata = precompile.buildShieldCalldata(SHIELD_PARAMS);
+        const calldata = buildShieldCalldata(SHIELD_PARAMS);
         expect(calldata.startsWith(toHex(SP_SEL.SHIELD))).toBe(true);
     });
 
     it('returns 0x-prefixed hex string', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        expect(precompile.buildShieldCalldata(SHIELD_PARAMS).startsWith('0x')).toBe(true);
+        expect(buildShieldCalldata(SHIELD_PARAMS).startsWith('0x')).toBe(true);
     });
 
     it('is deterministic — same params produce same calldata', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
-        const a = precompile.buildShieldCalldata(SHIELD_PARAMS);
-        const b = precompile.buildShieldCalldata(SHIELD_PARAMS);
+        const a = buildShieldCalldata(SHIELD_PARAMS);
+        const b = buildShieldCalldata(SHIELD_PARAMS);
         expect(a).toBe(b);
     });
 
     it('throws when encryptedMemo has wrong size', () => {
-        const precompile = new ShieldedPoolPrecompile(mockEvm());
         expect(() =>
-            precompile.buildShieldCalldata({ ...SHIELD_PARAMS, encryptedMemo: new Uint8Array(104) })
+            buildShieldCalldata({ ...SHIELD_PARAMS, encryptedMemo: new Uint8Array(104) })
         ).toThrow(/EncryptedMemo: invalid size.*expected 180 bytes, got 104/);
     });
 });
@@ -143,6 +140,6 @@ describe('ShieldedPoolPrecompile — surface', () => {
         const methods = Object.getOwnPropertyNames(ShieldedPoolPrecompile.prototype)
             .filter((name) => name !== 'constructor')
             .sort();
-        expect(methods).toEqual(['buildShieldCalldata', 'estimateShieldGas', 'shield']);
+        expect(methods).toEqual(['estimateShieldGas', 'shield']);
     });
 });

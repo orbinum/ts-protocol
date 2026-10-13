@@ -1,5 +1,5 @@
 import { hexToNumber, hexToBigint } from '../../foundation/encoding/hex';
-import { postJsonWithRetry } from '../../foundation/jsonRpcHttp';
+import { batchResults, postJsonWithRetry } from '../../foundation/jsonRpcHttp';
 
 /** Internal shape of a single JSON-RPC 2.0 response. */
 type JsonRpcResponse<T> = {
@@ -8,9 +8,6 @@ type JsonRpcResponse<T> = {
     result?: T;
     error?: { code: number; message: string };
 };
-
-/** Internal shape of a JSON-RPC 2.0 batch response. */
-type JsonRpcBatchResponse<T> = Array<JsonRpcResponse<T>>;
 
 /**
  * Stateless HTTP JSON-RPC client for the Orbinum EVM endpoint.
@@ -65,13 +62,10 @@ export class EvmClient {
         }));
         const res = await postJsonWithRetry(this.rpcUrl, JSON.stringify(body));
         if (!res.ok) throw new Error(`EVM HTTP ${res.status}: ${res.statusText}`);
-        const arr = (await res.json()) as JsonRpcBatchResponse<unknown>;
-        // Reindexed by id, not sorted. JSON-RPC allows a server to omit a
-        // response, and a parse error carries `id: null` — sorting then packs
-        // the survivors together and every later result answers the wrong call,
-        // silently. Same rule as `jsonRpcHttp.batchPost`.
-        const byId = new Map(arr.map((r) => [r.id, r]));
-        return calls.map((_, i) => byId.get(i + 1)?.result ?? null) as T;
+        return batchResults<T>(
+            await res.json(),
+            calls.map((_, i) => i + 1)
+        );
     }
 
     // ─── Convenience wrappers ─────────────────────────────────────────────────

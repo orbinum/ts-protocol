@@ -17,6 +17,8 @@ export type ExtrinsicDecoder = ReturnType<typeof getExtrinsicDecoder>;
 
 /** Block hashes whose `spec_version` is remembered before the map is reset. */
 const SPEC_CACHE_LIMIT = 4096;
+/** Runtimes kept decoded at once; the oldest is dropped past this. */
+const RUNTIME_CACHE_LIMIT = 16;
 
 /** One runtime's decoders, each built on first use: most callers need only one. */
 class Runtime {
@@ -80,6 +82,12 @@ export class RuntimeDecoders {
         const spec = await this.specOf(blockHash);
         let runtime = this._bySpec.get(spec);
         if (!runtime) {
+            // A chain has a handful of runtimes; a node claiming more (one per
+            // block) must not grow this without bound.
+            if (this._bySpec.size >= RUNTIME_CACHE_LIMIT) {
+                const oldest = this._bySpec.keys().next().value;
+                if (oldest !== undefined) this._bySpec.delete(oldest);
+            }
             runtime = retryable(
                 this.rpc<string>('state_getMetadata', [blockHash]).then(
                     (hex) => new Runtime(fromHex(hex as `0x${string}`))

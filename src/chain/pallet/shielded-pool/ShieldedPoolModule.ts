@@ -145,7 +145,7 @@ export class ShieldedPoolModule {
 
     /**
      * The runtime's floor on a spend's fee, in planck (`ShieldedPool.MinSpendFee`).
-     * Changes only with a runtime upgrade; `MIN_GASLESS_FEE` is its current value.
+     * Changes only with a runtime upgrade; `MIN_SPEND_FEE` is its current value.
      */
     minSpendFee(): Promise<bigint> {
         return readMinSpendFee(this.substrate);

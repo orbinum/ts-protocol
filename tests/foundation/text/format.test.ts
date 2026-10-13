@@ -130,10 +130,6 @@ describe('formatBalance — options: custom decimals', () => {
     it('formats with 0 decimals', () => {
         expect(formatBalance('42', { decimals: 0, symbol: 'UNITS' })).toBe('42 UNITS');
     });
-
-    it('supports legacy numeric second argument as decimals', () => {
-        expect(formatBalance('1000000', 6)).toBe('1 ORB');
-    });
 });
 
 describe('formatBalance — options: showSymbol', () => {

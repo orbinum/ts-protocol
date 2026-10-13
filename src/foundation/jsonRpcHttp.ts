@@ -27,20 +27,25 @@ export interface BatchOptions {
     maxRetries?: number;
     /** Base backoff in ms; doubles each attempt, capped at `maxBackoffMs`. Default: 250. */
     baseBackoffMs?: number;
-    /** Backoff cap in ms. Default: 4000. */
+    /** Backoff cap in ms, server `Retry-After` included. Default: 4000. */
     maxBackoffMs?: number;
+    /** Per-attempt timeout in ms; a node that never answers fails instead of hanging. Default: 30000. */
+    timeoutMs?: number;
 }
 
 const DEFAULT_MAX_RETRIES = 5;
 const DEFAULT_BASE_BACKOFF_MS = 250;
 const DEFAULT_MAX_BACKOFF_MS = 4000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * POSTs a JSON payload, retrying on 429/503 with exponential backoff and
- * honoring `Retry-After`. Returns the first non-retryable response (ok or not)
- * — HTTP-status handling stays with the caller.
+ * honoring `Retry-After` up to `maxBackoffMs`: the server picks the delay, so
+ * an uncapped one lets it stall the client for as long as it likes. Returns
+ * the first non-retryable response (ok or not) — HTTP-status handling stays
+ * with the caller.
  */
 export async function postJsonWithRetry(
     httpUrl: string,
@@ -50,6 +55,7 @@ export async function postJsonWithRetry(
     const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
     const baseBackoffMs = options.baseBackoffMs ?? DEFAULT_BASE_BACKOFF_MS;
     const maxBackoffMs = options.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
     let attempt = 0;
     for (;;) {
@@ -57,6 +63,7 @@ export async function postJsonWithRetry(
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: payload,
+            signal: AbortSignal.timeout(timeoutMs),
         });
 
         const retryable = res.status === 429 || res.status === 503;
@@ -66,8 +73,8 @@ export async function postJsonWithRetry(
         const delayMs =
             Number.isFinite(retryAfter) && retryAfter > 0
                 ? retryAfter * 1000
-                : Math.min(baseBackoffMs * 2 ** attempt, maxBackoffMs);
-        await sleep(delayMs);
+                : baseBackoffMs * 2 ** attempt;
+        await sleep(Math.min(delayMs, maxBackoffMs));
         attempt++;
     }
 }
@@ -97,10 +104,28 @@ export async function jsonRpcBatch<T extends unknown[]>(
     const res = await postJsonWithRetry(httpUrl, JSON.stringify(body), options);
     if (!res.ok) throw new Error(`JSON-RPC HTTP ${res.status}: ${res.statusText}`);
 
-    const arr = (await res.json()) as Array<JsonRpcResponse<unknown>>;
-    // JSON-RPC does not guarantee response order — reindex by id.
-    const byId = new Map(arr.map((r) => [r.id, r]));
-    return calls.map((_, i) => byId.get(i)?.result ?? null) as T;
+    return batchResults<T>(
+        await res.json(),
+        calls.map((_, i) => i)
+    );
+}
+
+/**
+ * The results of a batch response, in the order of `ids`.
+ *
+ * Reindexed by id, not sorted: JSON-RPC does not guarantee response order,
+ * allows a server to omit a response, and gives a parse error `id: null` —
+ * sorting would pack the survivors together and every later result would
+ * answer the wrong call, silently. A missing or failed call is `null` in its
+ * own slot. A body that is not an array is refused: the server answered
+ * something other than the batch.
+ */
+export function batchResults<T extends unknown[]>(body: unknown, ids: readonly number[]): T {
+    if (!Array.isArray(body)) throw new Error('JSON-RPC batch: expected an array response');
+    const byId = new Map(
+        (body as Array<JsonRpcResponse<unknown> | null>).map((r) => [r?.id, r] as const)
+    );
+    return ids.map((id) => byId.get(id)?.result ?? null) as T;
 }
 
 /** Derives the HTTP(S) RPC URL from a WebSocket URL (`ws://`→`http://`, `wss://`→`https://`). */

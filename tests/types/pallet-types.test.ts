@@ -25,7 +25,6 @@ describe('pallet-args types', () => {
     it('public private-transfer types use the hex-based module shape', () => {
         const input: PublicPrivateTransferInput = {
             nullifier: '0x' + 'aa'.repeat(32),
-            commitment: '0x' + 'bb'.repeat(32),
         };
         const output: PublicPrivateTransferOutput = {
             commitment: '0x' + 'cc'.repeat(32),

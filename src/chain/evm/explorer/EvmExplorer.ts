@@ -1,6 +1,7 @@
 import { EvmClient } from '../EvmClient';
 import { formatBalance } from '../../../foundation/text/format';
 import { hexToNumber } from '../../../foundation/encoding/hex';
+import { isEvmAddress } from '../../../foundation/address';
 import type {
     EvmAddressInfo,
     EvmBlock,
@@ -20,6 +21,14 @@ import type {
  * Must not exceed the node's --max-block-range setting (default: 1024 in Frontier stable2512+).
  */
 const MAX_LOG_BLOCK_RANGE = 1000;
+/** Most blocks one call reads: each costs the node a full block fetch. */
+const MAX_BLOCK_SCAN = 1000;
+
+/** `address` as a 32-byte log topic / call argument word. Throws on anything but an H160. */
+function addressWord(address: string): string {
+    if (!isEvmAddress(address)) throw new Error(`Invalid EVM address: ${address}`);
+    return address.slice(2).toLowerCase().padStart(64, '0');
+}
 
 /** Raw JSON-RPC shape of an EVM block (hex-encoded numeric fields). */
 interface RawEvmBlock {
@@ -78,10 +87,13 @@ export class EvmExplorer {
 
     // --- Blocks ---
 
-    /** Returns the `count` most recent blocks in descending order (latest first). */
+    /** Returns the `count` (at most 1000) most recent blocks, latest first. */
     async getLatestBlocks(count = 10): Promise<EvmBlock[]> {
         const latest = await this.evm.getBlockNumber();
-        const nums = Array.from({ length: Math.min(count, latest + 1) }, (_, i) => latest - i);
+        const nums = Array.from(
+            { length: Math.min(count, MAX_BLOCK_SCAN, latest + 1) },
+            (_, i) => latest - i
+        );
         const results = await this.evm
             .batchRequest<(RawEvmBlock | null)[]>(
                 nums.map((n) => ({
@@ -138,12 +150,12 @@ export class EvmExplorer {
 
     /**
      * Returns lightweight summaries of all transactions sent from or to `address`
-     * within the last `maxBlocks` blocks, sorted by block number descending.
+     * within the last `maxBlocks` (at most 1000) blocks, sorted by block number descending.
      */
     async getTransactionsByAddress(address: string, maxBlocks = 300): Promise<EvmTxSummary[]> {
         const addr = address.toLowerCase();
         const latest = await this.evm.getBlockNumber();
-        const from = Math.max(0, latest - maxBlocks + 1);
+        const from = Math.max(0, latest - Math.min(maxBlocks, MAX_BLOCK_SCAN) + 1);
         const blockNums = Array.from({ length: latest - from + 1 }, (_, i) => latest - i);
         const CHUNK = 50;
         const blocks: (RawEvmBlock | null)[] = [];
@@ -326,7 +338,7 @@ export class EvmExplorer {
 
         let logs: RawEvmLog[];
         if (holderAddress) {
-            const padded = `0x${holderAddress.replace(/^0x/, '').toLowerCase().padStart(64, '0')}`;
+            const padded = `0x${addressWord(holderAddress)}`;
             const [sent, received] = await Promise.all([
                 this.evm
                     .request<RawEvmLog[]>('eth_getLogs', [
@@ -363,7 +375,7 @@ export class EvmExplorer {
 
     /** Returns the raw ERC-20 balance of `holderAddress` for the token at `tokenAddress` (0x-prefixed hex). */
     async getTokenBalance(tokenAddress: string, holderAddress: string): Promise<string> {
-        const padded = holderAddress.replace(/^0x/, '').toLowerCase().padStart(64, '0');
+        const padded = addressWord(holderAddress);
         const result = await this.ethCall(tokenAddress, `0x70a08231${padded}`);
         return result ?? '0x0';
     }

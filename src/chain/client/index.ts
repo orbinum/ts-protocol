@@ -5,6 +5,7 @@
  * OrbinumClient.ts          one connection, every protocol module hanging off it
  * OrbinumClientProvider.ts  that connection kept alive: heartbeat, backoff, status
  * types.ts                  the config both take, and the result every extrinsic returns
+ * runtimeGuard.ts           the oldest runtime spec this SDK talks to
  * ```
  *
  * Use `OrbinumClient` directly for a script or a test — it connects once and
@@ -16,3 +17,4 @@
 export * from './OrbinumClient';
 export * from './OrbinumClientProvider';
 export * from './types';
+export { MIN_SPEC_VERSION } from './runtimeGuard';

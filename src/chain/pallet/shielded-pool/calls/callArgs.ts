@@ -1,10 +1,11 @@
 /**
  * Shielded-pool call arguments in the shape PAPI's metadata-driven API takes.
  *
- * Kept apart from `ShieldedPoolModule` so a host that submits through its own
- * PAPI flow (to watch `broadcasted`, read the fee from the finalized block)
- * encodes exactly what the module does, instead of a copy of it that drifts
- * when the call changes.
+ * Kept apart from `ShieldedPoolModule` so a host that signs a shield through
+ * its own PAPI flow (to watch `broadcasted`, read the fee from the finalized
+ * block) encodes exactly what the module does: `shieldCallArgs` and
+ * `shieldBatchCallArgs` are public for that. The spend arguments stay internal
+ * — the module submits spends unsigned, and a host has no other way to.
  */
 import { MemoFormat } from '../../../../protocol/memo/index';
 import { accountIdHexToSs58 } from '../../../../foundation/address';
@@ -15,7 +16,12 @@ import type {
     ShieldParams,
     UnshieldParams,
 } from '../types/params';
-import { assertClaimFeesParams, assertMerkleRoots, assertShieldParams } from './validation';
+import {
+    assertClaimFeesParams,
+    assertPrivateTransferParams,
+    assertShieldParams,
+    assertUnshieldParams,
+} from './validation/index';
 
 /** `ShieldedPool.shield`'s arguments, by name. */
 export function shieldCallArgs(params: ShieldParams, where = 'shield') {
@@ -52,6 +58,7 @@ export function shieldBatchCallArgs(params: ShieldBatchParams) {
 
 /** `ShieldedPool.unshield`'s arguments, by name. A total unshield carries no change. */
 export function unshieldCallArgs(params: UnshieldParams) {
+    assertUnshieldParams(params, 'unshield');
     // PAPI's AccountId32 codec takes SS58.
     const recipient = accountIdHexToSs58(params.recipientAddress);
     if (!recipient) throw new Error(`Invalid recipientAddress: ${params.recipientAddress}`);
@@ -73,19 +80,13 @@ export function unshieldCallArgs(params: UnshieldParams) {
 
 /** `ShieldedPool.private_transfer`'s arguments, by name. */
 export function privateTransferCallArgs(params: PrivateTransferParams) {
-    assertMerkleRoots(params.merkleRoots, 'privateTransfer.merkleRoots');
+    assertPrivateTransferParams(params, 'privateTransfer');
     return {
         proof: params.proof,
         merkle_roots: params.merkleRoots,
         nullifiers: params.inputs.map((input) => input.nullifier),
         commitments: params.outputs.map((output) => output.commitment),
-        encrypted_memos: params.outputs.map((output, i) => {
-            MemoFormat.validate(
-                output.encryptedMemo,
-                `privateTransfer.outputs[${i}].encryptedMemo`
-            );
-            return output.encryptedMemo;
-        }),
+        encrypted_memos: params.outputs.map((output) => output.encryptedMemo),
         asset_id: params.assetId,
         fee: params.fee ?? 0n,
         circuit_version: params.circuitVersion,

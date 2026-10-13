@@ -9,6 +9,7 @@ import { IsmpModule } from '../pallet/ismp/IsmpModule';
 import { ShieldedPoolPrecompile } from '../evm/precompiles/ShieldedPoolPrecompile';
 import { CryptoPrecompiles } from '../evm/precompiles/CryptoPrecompiles';
 import type { OrbinumClientConfig } from './types';
+import { assertSupportedRuntime } from './runtimeGuard';
 
 export type { OrbinumClientConfig };
 
@@ -114,15 +115,23 @@ export class OrbinumClient {
     }
 
     /**
-     * Connects, or throws if the node does not answer within `connectTimeoutMs`.
+     * Connects, or throws if the node does not answer within `connectTimeoutMs`
+     * or runs a runtime older than `MIN_SPEC_VERSION`, whose calls this SDK
+     * does not encode.
      *
-     * An adopted `papi` client skips the handshake entirely — it is already
-     * connected, and re-probing it would only add latency to every startup.
+     * An adopted `papi` client skips the handshake — it is already connected —
+     * but not the runtime check.
      */
     static async connect(config: OrbinumClientConfig): Promise<OrbinumClient> {
         const substrate = config.papi
             ? SubstrateClient.adopt(config.papi, config.substrateHttp)
             : await SubstrateClient.connect(config.substrateWs, config.connectTimeoutMs ?? 15_000);
+        try {
+            await assertSupportedRuntime(substrate);
+        } catch (e) {
+            substrate.destroy();
+            throw e;
+        }
         const evm = config.evmRpc ? new EvmClient(config.evmRpc, config.evmRpcPeer) : null;
         return new OrbinumClient(substrate, evm);
     }

@@ -375,6 +375,26 @@ describe('SubstrateClient.unsafe', () => {
     });
 });
 
+// ─── SubstrateClient.signAndSubmit ────────────────────────────────────────────
+
+describe('SubstrateClient.signAndSubmit', () => {
+    it('refuses call data that decodes to a shielded-pool spend, before signing', async () => {
+        const mockTx = {
+            decodedCall: { type: 'ShieldedPool', value: { type: 'unshield', value: {} } },
+            createAndSubmit: vi.fn(),
+        };
+        const unsafeApi = { txFromCallData: vi.fn().mockResolvedValue(mockTx) };
+        const { client } = await makeClient({
+            getUnsafeApi: vi.fn().mockReturnValue(unsafeApi),
+        });
+
+        await expect(client.signAndSubmit(new Uint8Array([1]), {} as never)).rejects.toThrow(
+            /submitted unsigned/
+        );
+        expect(mockTx.createAndSubmit).not.toHaveBeenCalled();
+    });
+});
+
 // ─── SubstrateClient.txFromCallData ───────────────────────────────────────────
 
 describe('SubstrateClient.txFromCallData', () => {

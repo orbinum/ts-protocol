@@ -73,3 +73,25 @@ describe('EvmExplorer.getTransactionsByAddress — chunks block fetches', () => 
         expect(perBlockSingles).toHaveLength(0);
     });
 });
+
+describe('EvmExplorer — bounded scans and validated holders', () => {
+    it('reads at most 1000 blocks however many are asked for', async () => {
+        const { explorer, batchRequest } = makeExplorer(5000);
+        const blocks = await explorer.getLatestBlocks(5000);
+        expect(blocks).toHaveLength(1000);
+
+        batchRequest.mockClear();
+        await explorer.getTransactionsByAddress('0xabc', 1_000_000);
+        const fetched = batchRequest.mock.calls.reduce((n, c) => n + (c[0] as unknown[]).length, 0);
+        expect(fetched).toBe(1000);
+    });
+
+    it('refuses a holder that is not an H160', async () => {
+        const { explorer } = makeExplorer(10);
+        const token = '0x' + '11'.repeat(20);
+        await expect(explorer.getTokenTransfers(token, '0x1234')).rejects.toThrow(/EVM address/);
+        await expect(explorer.getTokenBalance(token, '0x' + 'zz'.repeat(20))).rejects.toThrow(
+            /EVM address/
+        );
+    });
+});

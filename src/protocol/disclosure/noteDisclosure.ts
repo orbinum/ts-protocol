@@ -39,6 +39,8 @@ import { BN254_R } from '../../foundation/crypto/constants';
 
 const PREFIX = 'orbdisc:';
 const VERSION = 1;
+/** Longest key accepted; a real one is about 520 characters. */
+const MAX_KEY_LENGTH = 1024;
 
 /** Pallet types: `value` is a u128, `assetId` a u32. */
 const U128_MAX = (1n << 128n) - 1n;
@@ -151,6 +153,8 @@ export function createNoteDisclosureKey(note: NoteDisclosureInput): string {
  */
 export function decodeNoteDisclosureKey(key: string): NoteDisclosure | null {
     try {
+        // Five 32-byte fields encode to well under this; refused before parsing.
+        if (key.length > MAX_KEY_LENGTH) return null;
         if (!key.startsWith(PREFIX)) return null;
         const payload = JSON.parse(base64UrlDecode(key.slice(PREFIX.length))) as DisclosurePayload;
         if (payload.v !== VERSION) return null;

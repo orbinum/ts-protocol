@@ -1,5 +1,5 @@
 export { ShieldedPoolModule } from './ShieldedPoolModule';
-export { shieldCallArgs, shieldBatchCallArgs } from './calls/index';
+export { shieldCallArgs, shieldBatchCallArgs, assertNotSignedSpend } from './calls/index';
 export {
     extractPalletError,
     isAlreadySpentError,
@@ -12,7 +12,7 @@ export {
 } from './errors';
 export type { PalletErrorKind } from './errors';
 export {
-    MIN_GASLESS_FEE,
+    MIN_SPEND_FEE,
     TRANSFER_INPUTS,
     TRANSFER_OUTPUTS,
     NATIVE_ASSET_ID,

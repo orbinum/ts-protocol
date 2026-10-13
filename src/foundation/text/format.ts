@@ -124,10 +124,9 @@ export interface FormatOptions {
  */
 export function formatBalance(
     raw: string | bigint | number | null | undefined,
-    options: FormatOptions | number = {}
+    options: FormatOptions = {}
 ): string {
-    const opts = typeof options === 'number' ? { decimals: options } : options;
-    const { decimals = 18, symbol = 'ORB', showSymbol = true, precision = 6 } = opts;
+    const { decimals = 18, symbol = 'ORB', showSymbol = true, precision = 6 } = options;
 
     const zero = showSymbol ? `0 ${symbol}` : '0';
 

@@ -133,6 +133,12 @@ describe('hexToNumber', () => {
 });
 
 describe('hexToBigint', () => {
+    it('refuses anything but 0x-prefixed hex', () => {
+        for (const bad of ['100', '0b11', '0o7', '0x', '0x12zz', '']) {
+            expect(() => hexToBigint(bad)).toThrow(/Invalid hex/);
+        }
+    });
+
     it('converts 0x-prefixed hex to bigint', () => {
         expect(hexToBigint('0x1')).toBe(1n);
         expect(hexToBigint('0xff')).toBe(255n);

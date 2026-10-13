@@ -55,7 +55,7 @@ export function ensureHexPrefix(hex: string): string {
  * Converts a 0x-prefixed hex string (as returned by JSON-RPC) to a number.
  *
  * Throws rather than returning `NaN`. A bare `parseInt` accepts a valid prefix
- * and drops the rest, so `"0x12zz"` used to yield `18` — a plausible block
+ * and drops the rest, so `"0x12zz"` would yield `18` — a plausible block
  * number that is simply wrong. It also has no upper bound: a quantity past
  * 2^53 loses precision silently, and these values come from a server.
  */
@@ -79,8 +79,14 @@ export function hexToNumber(hex: string): number {
 
 /**
  * Converts a 0x-prefixed hex string (as returned by JSON-RPC) to a bigint.
+ *
+ * Hex only: a bare `BigInt` also accepts decimal, octal and binary strings, so
+ * a server's `"100"` would read as one hundred instead of being refused.
  */
 export function hexToBigint(hex: string): bigint {
+    if (!/^0x[0-9a-fA-F]+$/i.test(hex)) {
+        throw new Error(`Invalid hex quantity: "${hex}"`);
+    }
     return BigInt(hex);
 }
 

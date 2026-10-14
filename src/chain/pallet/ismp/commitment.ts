@@ -30,6 +30,7 @@
  */
 
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { toHex } from '../../../foundation/encoding/hex';
 import type { GetRequest, IsmpRequest, PostRequest } from './IsmpModule';
 
 /** ABI word: 32 bytes, big-endian, left-padded. */
@@ -155,5 +156,5 @@ export function encodeGetRequest(g: GetRequest): Uint8Array {
 export function requestCommitment(request: IsmpRequest): string {
     const bytes =
         'Post' in request ? encodePostRequest(request.Post) : encodeGetRequest(request.Get);
-    return `0x${Buffer.from(keccak_256(bytes)).toString('hex')}`;
+    return toHex(keccak_256(bytes));
 }

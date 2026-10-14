@@ -1,5 +1,9 @@
 import type { SubstrateClient } from '../../substrate/SubstrateClient';
+import { fromHex, toHex } from '../../../foundation/encoding/hex';
 import type { StateMachineId } from './events';
+
+/** UTF-8 bytes of a key prefix. `Buffer` is Node-only: browsers and workers lack it. */
+const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 
 /**
  * Which chain, under which consensus client.
@@ -101,11 +105,11 @@ export interface ChannelHeight {
  * for a trie the source chain holds no root of. This holds for any relayer, not only a
  * self-relaying one.
  */
-export const ISMP_CHILD_TRIE = `0x${Buffer.from(':child_storage:default:ISMPv2').toString('hex')}`;
+export const ISMP_CHILD_TRIE = toHex(utf8(':child_storage:default:ISMPv2'));
 
 /** Child-trie key of a request commitment: `"RequestCommitments" ++ commitment`. */
 export function commitmentKey(commitment: string): string {
-    return `0x${Buffer.from('RequestCommitments').toString('hex')}${commitment.slice(2)}`;
+    return `${toHex(utf8('RequestCommitments'))}${commitment.slice(2)}`;
 }
 
 /**
@@ -117,7 +121,7 @@ export function commitmentKey(commitment: string): string {
  * message and one still in flight look identical from outside.
  */
 export function receiptKey(commitment: string): string {
-    return `0x${Buffer.from('RequestReceipts').toString('hex')}${commitment.slice(2)}`;
+    return `${toHex(utf8('RequestReceipts'))}${commitment.slice(2)}`;
 }
 
 /**
@@ -227,15 +231,13 @@ export class IsmpModule {
      * far), which is a normal answer rather than a failure.
      */
     async childTrieProof(height: number, keys: string[]): Promise<Uint8Array | null> {
-        const asBytes = keys.map((k) => Array.from(Buffer.from(k.slice(2), 'hex')));
+        const asBytes = keys.map((k) => Array.from(fromHex(k)));
         try {
             const res = await this.substrate.request<{ proof: number[] | string }>(
                 'ismp_queryChildTrieProof',
                 [height, asBytes]
             );
-            return typeof res.proof === 'string'
-                ? Uint8Array.from(Buffer.from(res.proof.slice(2), 'hex'))
-                : Uint8Array.from(res.proof);
+            return typeof res.proof === 'string' ? fromHex(res.proof) : Uint8Array.from(res.proof);
         } catch {
             return null;
         }

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-14
+
+### Fixed
+
+- The ISMP module no longer uses Node's `Buffer`, which browsers and web
+  workers lack: importing the package in a worker threw `Buffer is not
+  defined`. Keys and commitments are unchanged.
+
 ## [0.11.0] - 2026-10-13
 
 Hardening for runtime spec 19: spends can no longer be signed through this SDK,

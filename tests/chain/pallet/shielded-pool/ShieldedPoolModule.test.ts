@@ -549,3 +549,66 @@ describe('ShieldedPoolModule.minSpendFee', () => {
         expect(MinSpendFee).toHaveBeenCalledOnce();
     });
 });
+
+// ─── isKnownRoot ──────────────────────────────────────────────────────────────
+
+const ROOT = '0x' + 'ab'.repeat(32);
+
+/** Stub with the root storage the runtime's `is_known_root` reads. */
+function rootsClient(s: { active?: string; expiresAt?: number; sealed?: number; now?: number }) {
+    const historic = vi.fn().mockResolvedValue(s.expiresAt);
+    const client = {
+        request: vi.fn(),
+        unsafe: {
+            query: {
+                ShieldedPool: {
+                    PoseidonRoot: {
+                        getValue: vi.fn().mockResolvedValue(s.active ?? '0x' + '00'.repeat(32)),
+                    },
+                    HistoricPoseidonRoots: { getValue: historic },
+                    SealedRootIndex: { getValue: vi.fn().mockResolvedValue(s.sealed) },
+                },
+                System: { Number: { getValue: vi.fn().mockResolvedValue(s.now ?? 100) } },
+            },
+        },
+    } as unknown as SubstrateClient;
+    return { client, historic };
+}
+
+describe('ShieldedPoolModule.isKnownRoot', () => {
+    const known = (s: Parameters<typeof rootsClient>[0], root = ROOT, minBlocksLeft?: number) =>
+        new ShieldedPoolModule(rootsClient(s).client).isKnownRoot(root, { minBlocksLeft });
+
+    it('accepts the active root, whatever its case', async () => {
+        expect(await known({ active: ROOT.toUpperCase().replace('0X', '0x') })).toBe(true);
+    });
+
+    it('accepts a historic root inside its window, and the margin narrows it', async () => {
+        expect(await known({ expiresAt: 150, now: 100 })).toBe(true);
+        expect(await known({ expiresAt: 100, now: 100 })).toBe(true); // inclusive, as the runtime
+        expect(await known({ expiresAt: 150, now: 100 }, ROOT, 50)).toBe(true);
+        expect(await known({ expiresAt: 150, now: 100 }, ROOT, 51)).toBe(false);
+    });
+
+    it('refuses an expired or unknown root', async () => {
+        expect(await known({ expiresAt: 99, now: 100 })).toBe(false);
+        expect(await known({})).toBe(false);
+    });
+
+    it("accepts a sealed tree's final root", async () => {
+        expect(await known({ sealed: 3 })).toBe(true);
+    });
+
+    it('queries by the lower-case hex and refuses malformed input before reading', async () => {
+        const { client, historic } = rootsClient({ expiresAt: 150 });
+        const mod = new ShieldedPoolModule(client);
+        await mod.isKnownRoot(ROOT.toUpperCase().replace('0X', '0x'));
+        expect(historic).toHaveBeenCalledWith(ROOT);
+        historic.mockClear();
+        await expect(mod.isKnownRoot('0x1234')).rejects.toThrow('isKnownRoot.root');
+        await expect(mod.isKnownRoot(ROOT, { minBlocksLeft: -1 })).rejects.toThrow(
+            'isKnownRoot.minBlocksLeft'
+        );
+        expect(historic).not.toHaveBeenCalled();
+    });
+});

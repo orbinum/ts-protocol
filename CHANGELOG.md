@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-14
+
+### Added
+
+- `ShieldedPoolModule.isKnownRoot(root, { minBlocksLeft })`: whether the
+  runtime accepts `root` as a spend's anchor, as `is_known_root` decides it —
+  the active root, a historic root whose retention window covers
+  `minBlocksLeft` more blocks, or a sealed tree's final root. Every insert's
+  root is kept for `RootRetentionBlocks`, so a wallet can prove against the
+  tree at the size its indexer has, and check that root before proving.
+
 ## [0.11.1] - 2026-10-14
 
 ### Fixed

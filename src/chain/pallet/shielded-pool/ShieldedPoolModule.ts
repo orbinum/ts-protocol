@@ -22,7 +22,7 @@ import {
     shieldCallArgs,
     unshieldCallArgs,
 } from './calls/index';
-import { readMinSpendFee, readPendingFees } from './storage/index';
+import { readIsKnownRoot, readMinSpendFee, readPendingFees } from './storage/index';
 
 // ─── ShieldedPoolModule ───────────────────────────────────────────────────────
 
@@ -149,5 +149,19 @@ export class ShieldedPoolModule {
      */
     minSpendFee(): Promise<bigint> {
         return readMinSpendFee(this.substrate);
+    }
+
+    /**
+     * Whether a spend anchored at `root` (0x hex, as a proof carries it) would
+     * be accepted: the active root, a historic root with at least
+     * `minBlocksLeft` blocks of its retention window left, or a sealed tree's
+     * final root. Every insert's root is kept for `RootRetentionBlocks`, so a
+     * wallet may prove against the tree at an earlier size.
+     */
+    isKnownRoot(
+        root: string,
+        options: { minBlocksLeft?: number | undefined } = {}
+    ): Promise<boolean> {
+        return readIsKnownRoot(this.substrate, root, options.minBlocksLeft ?? 0);
     }
 }

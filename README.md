@@ -15,10 +15,11 @@ Node and Cloudflare Workers all run it.
 ## Installation
 
 ```bash
-npm install @orbinum/protocol
-# peer deps, if you talk to a Substrate node:
-npm install polkadot-api @polkadot/util-crypto
+npm install @orbinum/protocol polkadot-api @polkadot/util-crypto
 ```
+
+Both peers are required: the bundle imports them when it loads, so any import
+of `@orbinum/protocol` fails without them, whatever you use from it.
 
 ## What it gives you
 
@@ -108,7 +109,7 @@ this SDK, and belongs on the wallet's side of that line.
 ## Requirements
 
 - Node 22+, or any modern browser / RN runtime.
-- To reach a Substrate node: `polkadot-api` and `@polkadot/util-crypto` (peers).
+- The peers `polkadot-api` and `@polkadot/util-crypto`, always (see Installation).
 
 ## License
 

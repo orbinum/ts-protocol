@@ -92,13 +92,14 @@ export class CryptoPrecompiles {
         return fromHex(await this.evm.call(PRECOMPILE_ADDR.IDENTITY, toHex(data)));
     }
 
-    // ─── SHA3-FIPS-256 / Keccak-256 (0x0400) ─────────────────────────────────
+    // ─── SHA3-256 (FIPS 202) (0x0400) ────────────────────────────────────────
 
     /**
-     * Computes Keccak-256 (= SHA3-FIPS-256 as used by Ethereum) of arbitrary bytes.
-     * Returns a 32-byte digest.
+     * Computes SHA3-256 as standardised in FIPS 202, via EVM precompile. Returns
+     * a 32-byte digest. This is NOT Keccak-256: the two differ in padding, so
+     * Ethereum's `keccak256` gives a different digest for the same input.
      */
-    async keccak256(data: Uint8Array): Promise<Uint8Array> {
+    async sha3Fips256(data: Uint8Array): Promise<Uint8Array> {
         return fromHex(await this.evm.call(PRECOMPILE_ADDR.SHA3_FIPS256, toHex(data)));
     }
 

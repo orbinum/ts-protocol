@@ -41,19 +41,19 @@ describe('CryptoPrecompiles.sha256', () => {
     });
 });
 
-// ─── keccak256 ────────────────────────────────────────────────────────────────
+// ─── sha3Fips256 ──────────────────────────────────────────────────────────────
 
-describe('CryptoPrecompiles.keccak256', () => {
+describe('CryptoPrecompiles.sha3Fips256', () => {
     it('returns the bytes from the precompile response', async () => {
         const digest = new Uint8Array(32).fill(0xdd);
         const evm = mockEvm(toHex(digest));
-        const result = await new CryptoPrecompiles(evm).keccak256(new Uint8Array([1]));
+        const result = await new CryptoPrecompiles(evm).sha3Fips256(new Uint8Array([1]));
         expect(result).toEqual(digest);
     });
 
     it('calls SHA3_FIPS256 precompile address', async () => {
         const evm = mockEvm(hex32());
-        await new CryptoPrecompiles(evm).keccak256(new Uint8Array([1]));
+        await new CryptoPrecompiles(evm).sha3Fips256(new Uint8Array([1]));
         expect(vi.mocked(evm.call).mock.calls[0]?.[0]).toBe(PRECOMPILE_ADDR.SHA3_FIPS256);
     });
 });

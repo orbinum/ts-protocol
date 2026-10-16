@@ -38,17 +38,11 @@ export type { OrbinumClientConfig };
  * const stats = await client.privacy.getPoolStats();
  * console.log('root:', stats.merkleRoot, 'leaves:', stats.commitmentCount);
  *
- * // Shield tokens (with a SubstrateSigner). `NoteBuilder.build` produces the
- * // commitment and the 180-byte memo together — both are required, and a note
- * // shielded without a valid memo is unrecoverable.
- * const note = await NoteBuilder.build({ value: 1000n, assetId: 1n, ownerPk });
+ * // Shield ORB (asset 0) with a SubstrateSigner. The commitment, its 180-byte
+ * // memo and the shield proof come from the wallet that owns the note: this
+ * // package does not build notes or seal memos.
  * const result = await client.shieldedPool.shield(
- *   {
- *     assetId: 1,
- *     amount: note.value,
- *     commitment: note.commitmentHex,
- *     encryptedMemo: Uint8Array.from(note.memo),
- *   },
+ *   { assetId: 0, amount, commitment, encryptedMemo, proof, circuitVersion: 1 },
  *   signer,
  * );
  * console.log('tx ok:', result.ok, 'block:', result.blockHash);

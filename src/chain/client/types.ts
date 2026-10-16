@@ -13,15 +13,6 @@ type OrbinumClientCommon = {
      * alone, which reports as pending forever but can never mine.
      */
     evmRpcPeer?: string;
-    /**
-     * Base URL of a circuits-artifact mirror serving `manifest.json` and the
-     * artifacts beside it. Omit for the default npm CDN (unpkg).
-     *
-     * Worth setting for a deployment that cannot depend on a public CDN being
-     * reachable: proving needs these files, so an unreachable mirror is a wallet
-     * that cannot spend.
-     */
-    circuitsBaseUrl?: string;
 };
 
 /**

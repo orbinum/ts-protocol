@@ -127,9 +127,12 @@ describe('pallet-events types', () => {
             amount: 250n,
             recipient: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
             changeCommitment: null,
+            changeEncryptedMemo: null,
+            changeLeafIndex: null,
         };
         expect(ev.amount).toBe(250n);
         expect(ev.changeCommitment).toBeNull();
+        expect(ev.changeLeafIndex).toBeNull();
     });
 
     it('UnshieldedEvent holds changeCommitment as hex string for partial unshield', () => {
@@ -138,8 +141,11 @@ describe('pallet-events types', () => {
             amount: 250n,
             recipient: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY',
             changeCommitment: '0x' + 'ab'.repeat(32),
+            changeEncryptedMemo: '0x' + '00'.repeat(180),
+            changeLeafIndex: 12,
         };
         expect(typeof ev.changeCommitment).toBe('string');
+        expect(ev.changeLeafIndex).toBe(12);
         expect(ev.changeCommitment).toMatch(/^0x[a-f0-9]{64}$/);
     });
 
@@ -213,9 +219,24 @@ describe('pallet-events types', () => {
     it('ShieldedPoolEvent covers Unshielded variant', () => {
         const event: ShieldedPoolEvent = {
             type: 'Unshielded',
-            data: { nullifier: '0x01', amount: 10n, recipient: '0x02', changeCommitment: null },
+            data: {
+                nullifier: '0x01',
+                amount: 10n,
+                recipient: '0x02',
+                changeCommitment: null,
+                changeEncryptedMemo: null,
+                changeLeafIndex: null,
+            },
         };
         expect(event.type).toBe('Unshielded');
+    });
+
+    it('ShieldedPoolEvent covers TreeSealed variant', () => {
+        const event: ShieldedPoolEvent = {
+            type: 'TreeSealed',
+            data: { treeId: 0, finalRoot: '0xa', firstLeafIndex: 0, leafCount: 1_048_576 },
+        };
+        expect(event.type).toBe('TreeSealed');
     });
 
     it('ShieldedPoolEvent covers MerkleRootUpdated variant', () => {

@@ -56,9 +56,7 @@ export type CommitmentsInsertedEvent = {
  * Emitted by `unshield()` when a note is withdrawn to the public chain.
  *
  * Rust variant: `Unshielded { nullifier, amount, recipient, change_commitment,
- * change_encrypted_memo, change_leaf_index }`. The last two are NOT modelled
- * here — a consumer that needs the change note's memo or its leaf position
- * reads the raw event, or finds the note by scanning.
+ * change_encrypted_memo, change_leaf_index }`.
  */
 export type UnshieldedEvent = {
     /** 0x-prefixed 32-byte Poseidon nullifier (LE). */
@@ -71,6 +69,10 @@ export type UnshieldedEvent = {
      * When present, the commitment has been inserted into the Merkle tree.
      */
     changeCommitment: string | null;
+    /** 0x-prefixed encrypted memo of the change note (180 bytes), or null for total unshield. */
+    changeEncryptedMemo: string | null;
+    /** Leaf index of the change note in the Merkle tree, or null for total unshield. */
+    changeLeafIndex: number | null;
 };
 
 /**
@@ -88,6 +90,21 @@ export type MerkleRootUpdatedEvent = {
      * and scan cursors rely on; per-tree size is `treeSize % LEAVES_PER_TREE`.
      */
     treeSize: number;
+};
+
+/**
+ * Emitted when a tree fills and the forest moves to the next tree.
+ * Rust variant: `TreeSealed { tree_id, final_root, first_leaf_index, leaf_count }`
+ */
+export type TreeSealedEvent = {
+    /** Id of the sealed tree. */
+    treeId: number;
+    /** 0x-prefixed final root of the sealed tree (32 bytes, LE): a permanent spend anchor. */
+    finalRoot: string;
+    /** Global index of the sealed tree's first leaf. */
+    firstLeafIndex: number;
+    /** Leaves in the sealed tree (always the tree's capacity). */
+    leafCount: number;
 };
 
 // ─── Asset registry ───────────────────────────────────────────────────────────
@@ -144,11 +161,8 @@ export type FeesClaimedEvent = {
 // ─── Discriminated union ──────────────────────────────────────────────────────
 
 /**
- * The pallet events this SDK models, as a discriminated union.
- *
- * NOT every variant: `TreeSealed` (forest rotation) is emitted by the pallet
- * and absent here. A consumer that acts on a tree rotation has to read the raw
- * event.
+ * The pallet's events as a discriminated union, with camelCase fields. Raw
+ * events read from the chain carry the Rust (snake_case) names; map them.
  */
 export type ShieldedPoolEvent =
     | { type: 'Shielded'; data: ShieldedEvent }
@@ -156,6 +170,7 @@ export type ShieldedPoolEvent =
     | { type: 'CommitmentsInserted'; data: CommitmentsInsertedEvent }
     | { type: 'Unshielded'; data: UnshieldedEvent }
     | { type: 'MerkleRootUpdated'; data: MerkleRootUpdatedEvent }
+    | { type: 'TreeSealed'; data: TreeSealedEvent }
     | { type: 'AssetRegistered'; data: AssetRegisteredEvent }
     | { type: 'AssetVerified'; data: AssetVerifiedEvent }
     | { type: 'AssetUnverified'; data: AssetUnverifiedEvent }

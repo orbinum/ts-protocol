@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-16
+
+### Added
+
+- `PRECOMPILE_ADDR.BALANCES` (`0x…0802`), `BALANCES_SEL` and the Balances
+  precompile's entry in `KNOWN_PRECOMPILES`.
+- `CryptoPrecompiles.sha3Fips256`: the `0x0400` precompile under its real name,
+  SHA3-256 as standardised in FIPS 202.
+- `TreeSealedEvent` and its `ShieldedPoolEvent` variant;
+  `UnshieldedEvent.changeEncryptedMemo` and `changeLeafIndex`.
+
+### Fixed
+
+- `PrivacyModule.getMerkleProof` returns the root the node sends with the path.
+- The README lists both peers as required: the bundle imports them at load.
+- The `ShieldedPoolPrecompile` docs: `shield` is dispatched from the
+  precompile's own account, so the `Shielded` event's `depositor` is that
+  account. The `OrbinumClient` example no longer uses `NoteBuilder`, which is
+  not part of this package, and shields asset `0`.
+
+### Removed
+
+- **Breaking:** `CryptoPrecompiles.keccak256`. It called `0x0400`, which
+  returns SHA3-256 (FIPS 202), not Ethereum's Keccak-256. Use `sha3Fips256` for
+  the precompile, or `keccakAsU8a` from `@polkadot/util-crypto` for Keccak-256.
+- **Breaking:** `circuitsBaseUrl` on `OrbinumClientConfig` and
+  `ClientProviderConfig`. No code read it; point the proof generator's artifact
+  provider at a mirror instead.
+
 ## [0.11.2] - 2026-10-14
 
 ### Added

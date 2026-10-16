@@ -45,8 +45,6 @@ export interface ClientProviderConfig {
     evmRpc?: string;
     /** HTTP URL of a second EVM endpoint, used only to detect transactions stranded on `evmRpc`. */
     evmRpcPeer?: string;
-    /** Base URL of a circuits-artifact mirror (manifest.json + artifacts). Omit to use the default npm CDN. */
-    circuitsBaseUrl?: string;
     /** Timeout for the initial WebSocket handshake in milliseconds. Default: `8_000`. */
     connectTimeoutMs?: number;
     /** Interval between heartbeat probes in milliseconds. Default: `5_000`. */
@@ -232,8 +230,6 @@ export class OrbinumClientProvider {
             };
             if (this.config.evmRpc) connectConfig.evmRpc = this.config.evmRpc;
             if (this.config.evmRpcPeer) connectConfig.evmRpcPeer = this.config.evmRpcPeer;
-            if (this.config.circuitsBaseUrl)
-                connectConfig.circuitsBaseUrl = this.config.circuitsBaseUrl;
             clientPromise = OrbinumClient.connect(connectConfig);
             const client = await Promise.race([clientPromise, timeoutPromise]);
             orphanClient = client;

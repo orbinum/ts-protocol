@@ -24,6 +24,7 @@ describe('PrivacyModule.getMerkleProof', () => {
     it('maps snake_case response to camelCase shape', async () => {
         const substrate = makeSubstrate({
             privacy_getMerkleProof: {
+                root: '0xr',
                 path: ['0xa', '0xb'],
                 leaf_index: 7,
                 tree_depth: 32,
@@ -34,6 +35,7 @@ describe('PrivacyModule.getMerkleProof', () => {
             path: ['0xa', '0xb'],
             leafIndex: 7,
             treeDepth: 32,
+            root: '0xr',
         });
         expect(substrate.request).toHaveBeenCalledWith('privacy_getMerkleProof', [7]);
     });

@@ -1,9 +1,10 @@
 /**
  * Bindings for the `ShieldedPoolPrecompile` at address `0x...0801`.
  *
- * Only `shield` is live: the precompile dispatches it on behalf of the EVM
- * caller (resolved to an AccountId32 via `EeSuffixAddressMapping`), so an
- * EVM-only user can shield without a Polkadot extension. Spends are not here:
+ * Only `shield` is live: the caller's `msg.value` moves to the precompile, which
+ * dispatches `shield` from its own account, so an EVM-only user can shield
+ * without a Polkadot extension. The `Shielded` event's `depositor` is therefore
+ * the precompile's account, not the caller. Spends are not here:
  * they are accepted only as unsigned Substrate extrinsics
  * (`ShieldedPoolModule.privateTransfer` / `unshield`).
  *

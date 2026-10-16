@@ -8,7 +8,6 @@ import type {
 import type {
     RpcV2NullifierStatus,
     RpcV2PoolStats,
-    RpcV2MerkleProof,
     RpcV2SubtreeRoots,
     PrivacyMerkleProof,
 } from './types';
@@ -34,7 +33,7 @@ export class PrivacyModule {
      * by deserialisation before any lookup runs — `getMerkleProofByCommitment`
      * is the one that takes a string.
      */
-    async getMerkleProof(leafIndex: number): Promise<RpcV2MerkleProof> {
+    async getMerkleProof(leafIndex: number): Promise<PrivacyMerkleProof> {
         const raw = await withBusyRetry(() =>
             this.substrate.request<RawRpcV2MerkleProof>('privacy_getMerkleProof', [leafIndex])
         );
@@ -43,6 +42,7 @@ export class PrivacyModule {
             leafIndex: raw.leaf_index,
             treeDepth: raw.tree_depth,
             treeId: raw.tree_id,
+            root: raw.root,
         };
     }
 

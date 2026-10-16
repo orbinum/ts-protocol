@@ -14,6 +14,7 @@ export type {
     CommitmentsInsertedEvent,
     UnshieldedEvent,
     MerkleRootUpdatedEvent,
+    TreeSealedEvent,
     AssetRegisteredEvent,
     AssetVerifiedEvent,
     AssetUnverifiedEvent,

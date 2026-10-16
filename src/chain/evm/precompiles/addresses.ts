@@ -24,6 +24,7 @@ export const PRECOMPILE_ADDR = {
     CURVE25519_SCALAR_MUL: '0x0000000000000000000000000000000000000403',
     // ── Orbinum custom ───────────────────────────────────────────────────────
     SHIELDED_POOL: '0x0000000000000000000000000000000000000801',
+    BALANCES: '0x0000000000000000000000000000000000000802',
 } as const;
 
 // ─── ShieldedPoolPrecompile selectors (0x0801) ────────────────────────────────
@@ -33,6 +34,17 @@ export const PRECOMPILE_ADDR = {
 export const SP_SEL = {
     // shield(uint32,bytes32,bytes,bytes,uint32) → 0xf25897e0 (payable, amount = msg.value)
     SHIELD: new Uint8Array([0xf2, 0x58, 0x97, 0xe0]),
+} as const;
+
+// ─── BalancesPrecompile selectors (0x0802) ────────────────────────────────────
+// Source: frame/evm/precompile/balances/src/lib.rs
+
+/** Function selectors for `BalancesPrecompile`. */
+export const BALANCES_SEL = {
+    // transfer(bytes32,uint256) → 0x6a467394
+    TRANSFER: new Uint8Array([0x6a, 0x46, 0x73, 0x94]),
+    // transferKeepAlive(bytes32,uint256) → 0xac6ac4c4
+    TRANSFER_KEEP_ALIVE: new Uint8Array([0xac, 0x6a, 0xc4, 0xc4]),
 } as const;
 
 // ─── Known Precompiles registry ───────────────────────────────────────────────
@@ -61,6 +73,13 @@ export const KNOWN_PRECOMPILES: Record<string, KnownPrecompileInfo> = {
         name: 'ShieldedPool',
         functions: {
             f25897e0: 'shield(uint32,bytes32,bytes,bytes,uint32)',
+        },
+    },
+    '0x0000000000000000000000000000000000000802': {
+        name: 'Balances',
+        functions: {
+            '6a467394': 'transfer(bytes32,uint256)',
+            ac6ac4c4: 'transferKeepAlive(bytes32,uint256)',
         },
     },
 };

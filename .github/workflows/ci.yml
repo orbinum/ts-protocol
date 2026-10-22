@@ -5,19 +5,13 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  workflow_call:
 
-# `github.workflow` is the *calling* workflow's name — "CI" on a direct push,
-# "Release" when release.yml calls this one. Keying on it is what keeps a push
-# to main from cancelling the very run the release gate is waiting on: both
-# fire on the same commit and the same ref, so any group they share makes one
-# cancel the other, and the survivor reports "cancelled" as a failure.
-#
-# `github.event_name` cannot do this job: a called workflow inherits the
-# caller's event, so it reads "push" in both cases.
+# A pass on a push to main starts release.yml on the same commit. A newer push to
+# a pull request supersedes its older run; a run on a branch is never cancelled:
+# a release starts only from a main commit whose run here passed.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:

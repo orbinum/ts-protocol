@@ -1,13 +1,15 @@
 name: Release
 
+# A release is a version bump that has passed CI: it starts when CI passes on a
+# push to main, on the commit CI tested (or by hand on main, to finish a release
+# that failed, only if CI passed on main's tip). A commit whose version is
+# already on npm stays green and does nothing. Re-running a failed CI run starts
+# the release again when it passes.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    # Only package.json: it holds the version, so a release is exactly "the
-    # version number changed". Watching CHANGELOG.md too would fire the whole
-    # gate every time the Unreleased section is edited, which is most pushes.
-    paths:
-      - "package.json"
   workflow_dispatch:
 
 permissions:
@@ -21,10 +23,24 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+# The commit to release: the one CI tested, not main's tip (`github.sha` under `workflow_run`).
+env:
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
 jobs:
   verify:
     name: Verify version
+    # Only after CI passed on a push to main; a manual run releases main, never another branch.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # A manual run reads this commit's CI runs.
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -35,6 +51,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
+          ref: ${{ env.SHA }}
           fetch-depth: 0
           # Tags are NOT fetched by `fetch-depth: 0` — that only controls
           # history depth. Without this the tag check below sees no tags at all,
@@ -81,6 +98,20 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # A run started by CI already has its pass; a manual one needs a passed CI
+      # run of this commit on a push to main.
+      - name: Require CI to have passed on this commit
+        if: github.event_name == 'workflow_dispatch' && steps.check.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PASSED=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --branch main \
+            --event push --status success --json databaseId --jq 'length')
+          if [ "$PASSED" -eq 0 ]; then
+            echo "::error::CI has not passed on $SHA. Re-run it: the release follows when it passes."
+            exit 1
+          fi
+
       # A release whose notes would be empty is a mistake, not a release: the
       # CHANGELOG section is the release notes.
       - name: Require a CHANGELOG entry for this version
@@ -92,19 +123,10 @@ jobs:
           fi
           echo "✅ CHANGELOG entry found."
 
-  # The same jobs a push to main runs, on this exact commit. Reused rather than
-  # copied, so the release gate cannot drift from CI.
-  ci:
-    name: CI
-    needs: verify
-    if: needs.verify.outputs.should_release == 'true'
-    uses: ./.github/workflows/ci.yml
-
-  # Only runs once `ci` has succeeded on this commit — nothing is tagged or
-  # published before the gate is green.
+  # Only after `verify`, which runs only once CI passed on this commit.
   publish:
     name: Build, Tag, Release and Publish
-    needs: [verify, ci]
+    needs: verify
     if: needs.verify.outputs.should_release == 'true'
     runs-on: ubuntu-latest
 
@@ -112,6 +134,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
+          ref: ${{ env.SHA }}
           fetch-depth: 0
           # Tags are NOT fetched by `fetch-depth: 0` — that only controls
           # history depth. Without this the tag check below sees no tags at all,
@@ -199,7 +222,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Release $TAG"
+          git tag -a "$TAG" -m "Release $TAG" "$SHA"
           git push origin "$TAG"
 
       # Idempotent by design: the action updates an existing release rather than
@@ -208,6 +231,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.verify.outputs.tag }}
+          target_commitish: ${{ env.SHA }}
           name: Release ${{ needs.verify.outputs.tag }}
           files: |
             release/*.tar.gz

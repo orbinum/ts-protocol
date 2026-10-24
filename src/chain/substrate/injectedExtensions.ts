@@ -7,8 +7,13 @@
  * service worker. A crash instead of "no extension is reachable".
  *
  * These wrappers turn that into an ordinary checkable condition, so a host can
- * branch to its own signing path. Deliberately thin — this file translates an
- * environment assumption and nothing else; signing stays upstream.
+ * branch to its own signing path.
+ *
+ * One change to what an extension hands back: an ed25519 account's `txCreator`
+ * signs the readable transaction text (`getEd25519TextSigner`), the only ed25519
+ * signature runtime spec 20 accepts. The extension's own creator signs the raw
+ * payload, which the runtime refuses; swapping it here means no consumer can
+ * forget to.
  *
  * Public, and it belongs beside `getSubstrateSignerFromExtension`: connecting a
  * browser wallet is step one of any dapp and touches no key — the extension
@@ -21,7 +26,8 @@ import {
     connectInjectedExtension as pjsConnect,
     getInjectedExtensions as pjsGetExtensions,
 } from 'polkadot-api/pjs-signer';
-import type { InjectedExtension } from 'polkadot-api/pjs-signer';
+import type { InjectedExtension, InjectedPolkadotAccount } from 'polkadot-api/pjs-signer';
+import { getEd25519TextSigner } from './ed25519Text/index';
 
 /**
  * Whether browser wallet extensions can be discovered at all. A host that gets
@@ -54,10 +60,36 @@ export function getInjectedExtensions(): string[] {
  * caller named an extension, so silence would misreport "not installed" for
  * "this host cannot reach extensions at all".
  */
-export function connectInjectedExtension(
+export async function connectInjectedExtension(
     name: string,
     origin?: string
 ): Promise<InjectedExtension> {
-    if (!hasInjectedExtensions()) return Promise.reject(new Error(NO_PAGE));
-    return origin === undefined ? pjsConnect(name) : pjsConnect(name, origin);
+    if (!hasInjectedExtensions()) throw new Error(NO_PAGE);
+    const extension = await (origin === undefined ? pjsConnect(name) : pjsConnect(name, origin));
+    return withTextSigners(extension);
+}
+
+/**
+ * ed25519 accounts with a `txCreator` that signs the transaction text through the
+ * account's own `signBytes` (the wallet's `signRaw`); every other account as is.
+ */
+function withTextSigners(extension: InjectedExtension): InjectedExtension {
+    // Keyed by the extension's account object, so repeated reads hand back the same signer.
+    const swapped = new WeakMap<InjectedPolkadotAccount, InjectedPolkadotAccount>();
+    const swapOne = (account: InjectedPolkadotAccount): InjectedPolkadotAccount => {
+        if (account.type !== 'ed25519') return account;
+        let text = swapped.get(account);
+        if (!text) {
+            const txCreator = getEd25519TextSigner(account.address, account.txCreator.signBytes);
+            text = { ...account, txCreator };
+            swapped.set(account, text);
+        }
+        return text;
+    };
+    const swap = (accounts: InjectedPolkadotAccount[]) => accounts.map(swapOne);
+    return {
+        ...extension,
+        getAccounts: () => swap(extension.getAccounts()),
+        subscribe: (cb) => extension.subscribe((accounts) => cb(swap(accounts))),
+    };
 }

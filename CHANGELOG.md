@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `getEd25519TextSigner(address, sign)`: the `SubstrateSigner` of an ed25519 account
+  for runtime spec 20, which accepts ed25519 only as `Ed25519Text` (`0x03`) or
+  `Ed25519WrappedText` (`0x04`). The key signs a readable text the runtime renders
+  again from the whole payload: the call, the recipient and amount of transfers, ORB
+  shields and fee claims, and a non-zero tip. Call names come from the transaction's
+  own metadata. The signature is checked locally and tagged by the form signed:
+  `<Bytes>`-wrapped through an extension's `signRaw`, bare from a keypair.
+- `Ed25519TextSignatureError`, and the text format itself: `textMessage`,
+  `summaryLines`, `formatOrb`, `callNameFrom`/`callNameIn`, `signingPayload`,
+  `wrapBytes`, `TAG_ED25519_TEXT`, `TAG_ED25519_WRAPPED_TEXT`.
+
+### Changed
+
+- **Breaking:** `connectInjectedExtension` gives ed25519 accounts a `txCreator` that
+  signs the transaction text through the account's own `signBytes`. The extension's
+  creator signs the raw payload (`0x00`), which spec 20 refuses. Other account types
+  are unchanged.
+
 ## [0.12.0] - 2026-10-16
 
 ### Added

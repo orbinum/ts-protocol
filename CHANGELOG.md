@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-04
+
+### Fixed
+
+- `formatBalance` and `formatORB` always render comma thousands and a dot
+  decimal (`1,234.5 ORB`) instead of the runtime locale. Under fr-FR they showed
+  `1 234,5 ORB`, an amount that `parseAmount` and amount inputs cannot read back.
+
 ## [0.13.0] - 2026-10-24
 
 ### Added

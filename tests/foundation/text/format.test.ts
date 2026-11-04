@@ -44,9 +44,13 @@ describe('formatBalance — integer amounts (string)', () => {
     });
 
     it('formats 1000 ORB with thousands separator', () => {
-        // toLocaleString uses locale separator; in test environment (en) it should be "1,000"
-        const result = formatBalance('1000000000000000000000');
-        expect(result).toMatch(/^1[,.]?000 ORB$/);
+        expect(formatBalance('1000000000000000000000')).toBe('1,000 ORB');
+    });
+
+    it('uses comma grouping and a dot decimal whatever the runtime locale', () => {
+        // fr-FR would render "999 999 491,999165": an amount inputs cannot parse back.
+        expect(formatBalance('999999491999165000000000000')).toBe('999,999,491.999165 ORB');
+        expect(formatBalance('-1234567500000000000000000')).toBe('-1,234,567.5 ORB');
     });
 
     it('formats 0.5 ORB as "0.5 ORB"', () => {

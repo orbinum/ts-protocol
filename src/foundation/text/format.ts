@@ -13,27 +13,21 @@
  */
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-const LOCALE_DECIMAL_SEP: string =
-    new Intl.NumberFormat(undefined).formatToParts(1.1).find((p) => p.type === 'decimal')?.value ??
-    '.';
-
 /**
- * Formats the integer part of a decimal number with thousands separators
- * using the runtime locale.
+ * Groups the integer part in thousands with commas, always: the decimal point
+ * stays a dot whatever the runtime locale, so every amount reads the same way
+ * and matches what `parseAmount` and amount inputs accept. A locale format
+ * (fr-FR "1 000,5") would show a number the user cannot type back.
  */
-function formatIntegerLocale(intPart: string): string {
-    try {
-        return BigInt(intPart || '0').toLocaleString(undefined);
-    } catch {
-        return (intPart || '0').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
+function formatIntegerGrouped(intPart: string): string {
+    return (intPart || '0').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 /**
  * Normalises a decimal string to a display-ready string:
  * - trims trailing zeros from decimal part,
- * - adds thousands separators to integer part,
- * - uses the runtime locale decimal separator.
+ * - adds comma thousands separators to integer part,
+ * - uses a dot as decimal separator.
  *
  * Returns null if the input is empty or not a valid decimal.
  */
@@ -55,10 +49,8 @@ function normalizeDecimalForDisplay(raw: string, maxFractionDigits: number): str
     const limit = Math.max(0, maxFractionDigits);
     fractionPart = fractionPart.slice(0, limit).replace(/0+$/, '');
 
-    const formattedInt = formatIntegerLocale(integerPart);
-    return fractionPart
-        ? `${sign}${formattedInt}${LOCALE_DECIMAL_SEP}${fractionPart}`
-        : `${sign}${formattedInt}`;
+    const formattedInt = formatIntegerGrouped(integerPart);
+    return fractionPart ? `${sign}${formattedInt}.${fractionPart}` : `${sign}${formattedInt}`;
 }
 
 /**

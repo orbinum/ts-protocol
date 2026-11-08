@@ -20,4 +20,5 @@ export * from './memo/index';
 export * from './disclosure/index';
 export * from './spend/index';
 export * from './merkle/index';
+export * from './payment/index';
 export type { MerkleTreeInfo, ScanCommitment, NoteFacts } from './types';

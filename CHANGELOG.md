@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-08
+
+### Added
+
+- **Payment verification with the recipient's viewing key**, for a backend
+  that confirms a payment without holding a key that can spend:
+    - `readPaymentSlip(slip, key)`: opens an `orbslip1:` slip and its note's
+      memo, checks the note is the recipient's (directly or through its stealth
+      address), recomputes the commitment and verifies a sender address claim.
+      Returns amount, asset, commitment, leaf index, tx hash and the sender
+      (`anonymous`, `pseudonym` or a verified `address`), or null.
+    - `verifyPayment(slip, { key, tree, expected })`: the same, plus the
+      expected asset and exact amount, and the commitment's presence in the
+      note tree (`tree` is `client.privacy`). A node that cannot answer throws,
+      so an order is retried rather than rejected.
+    - `encodeViewingKey` / `decodeViewingKey`: the `orbview1:` export a recipient
+      hands such a backend (viewing secret key + owner key, checksummed).
+    - Safe on untrusted input: a malformed, oversized or forged slip returns
+      null (`not-for-you`) and never throws; a misconfigured key or expectation
+      throws `TypeError` before the node is queried; the node is queried last,
+      only for a slip that matches the order, and a nonsense answer throws.
+  Pinned to the wallet's `importPaymentSlip` by vectors built from real notes
+  (`tests/vectors/payment-verification.json`).
+
 ## [0.13.1] - 2026-11-04
 
 ### Fixed

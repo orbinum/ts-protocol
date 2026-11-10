@@ -59,7 +59,7 @@ export { getTxCreatorFromPjs as getSubstrateSignerFromExtension } from 'polkadot
 export type { SignPayload, SignRaw } from 'polkadot-api/pjs-signer';
 /**
  * An ed25519 account's signer: it signs the readable transaction text, the only ed25519
- * signature runtime spec 20 accepts. Extension accounts from `connectInjectedExtension`
+ * signature the runtime accepts. Extension accounts from `connectInjectedExtension`
  * already carry one; a keypair host builds it with its own `sign`.
  */
 export * from './ed25519Text/index';

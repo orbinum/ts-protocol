@@ -7,6 +7,254 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-08
+
+### Added
+
+- `client.staking` (`StakingModule`), for runtime spec 21:
+    - **Reads:** `account`, `config`, `admission`, `eraPoints`, `exposure`,
+      `nominatorsOf`, `nominationsQuota` and `pendingPayouts`. The last two go
+      through the `StakingApi` runtime API.
+      `config` also returns `activeEraStartMs`, the active era's start, and
+      `maxCommission`, the on-chain commission ceiling (`Staking.MaxCommission`,
+      set by governance; `PERBILL`, 100 %, when there is none).
+    - **Calls:** `bond`, `bondExtra`, `unbond`, `rebond`, `withdrawUnbonded`,
+      `setPayee`, `nominate`, `validate`, `chill`, `kick`, `payoutStakers`,
+      `setKeys`, `purgeKeys` and `deregisterValidator`.
+    - **Automatic payment:** `autoPayout()` reads what the chain pays on its own
+      each era (`pallet-auto-payout`): the era being paid and its progress, the
+      queued eras, and whether governance paused it.
+      `paidAutomatically(era, status)` tells which pending eras still need a
+      manual claim.
+    - Built on `pallet-staking-async`: `account` has no slashing spans (the pallet
+      keeps none), and `withdrawUnbonded(signer)` takes no count; it sends the
+      deprecated `num_slashing_spans` as 0.
+    - Arguments are checked before signing: amount, at most 16 targets with no
+      duplicates, session keys with their proof, and a commission within the
+      on-chain ceiling (`validate` reads `Staking.MaxCommission` at the best
+      block; the runtime has no fixed ceiling).
+    - `nominate` refuses a target that is not a validator candidate
+      (`Staking.Validators`, best block): the chain accepts any account, and that
+      share of the stake would back no one.
+    - `account`, `admission` and `pendingPayouts` read the best block, so a
+      transaction the user just made shows at once.
+- `client.pools` (`NominationPoolsModule`), for runtime spec 21's nomination
+  pools (`pallet-nomination-pools` over `pallet-delegated-staking`: members' funds
+  stay in their accounts, held as a delegation to the pool):
+    - **Reads:** `config` (minimum bonds, limits, `GlobalMaxCommission`,
+      counters, total value locked), `pools` (every pool with its state, points,
+      roles, commission and name), `pool(id)` (also its bonded and reward accounts
+      from `NominationPoolsApi.pool_accounts`, balance, nominations and reward
+      totals), `member(account)` (points, active and total balance, unbonding
+      chunks, pending rewards, claim permission), `pendingRewards(account)` and
+      `pointsToBalance(id, points)`. Pool and member reads use the best block.
+    - **Calls:** `join`, `bondExtra` (free balance or rewards), `bondExtraOther`
+      (rewards), `claimPayout`, `claimPayoutOther`, `unbond`, `withdrawUnbonded`,
+      `poolWithdrawUnbonded`, `create`, `nominate`, `setState`, `chill` and
+      `setClaimPermission`: the pool calls the ed25519 and EVM text signers
+      accept. Metadata and role changes are not wrapped.
+    - **Commission (pool root):** `setCommission(id, { commission, payee } | null)`,
+      `setCommissionMax(id, max)`, `setCommissionChangeRate(id, { maxIncrease,
+      minDelay })`, `claimCommission(id)` and
+      `setCommissionClaimPermission(id, permission | null)`, rates in `Perbill`
+      parts. Each reads the pool, `GlobalMaxCommission` and the best block first
+      and refuses, by the chain's error name, what the chain would refuse: a
+      signer that is not the root (or not allowed to claim), a rate above the
+      pool's or the global max, a max above the current one, a looser change
+      rate, an increase larger than `maxIncrease` or sooner than `minDelay`
+      blocks after the last change, and a claim with nothing pending or no
+      payee. The rules are exported (`setCommissionRefusal`,
+      `setCommissionMaxRefusal`, `setCommissionChangeRateRefusal`,
+      `setCommissionClaimPermissionRefusal`, `claimCommissionRefusal`,
+      `canClaimCommission`, `isThrottled`, `unthrottledFrom`,
+      `effectiveCommission`, `claimableCommission`), with the types
+      `CommissionContext`, `CommissionRefusal`, `CommissionChangeRate`,
+      `CommissionClaimPermission` and `NewPoolCommission`.
+    - `PoolCommission.throttleFrom` (the block the change rate counts from) and
+      `Pool.rewards.commissionClaimable` (what `claimCommission` would pay now,
+      unrecorded rewards included).
+    - Arguments are checked before signing: positive amounts, `u32` pool ids,
+      SS58 or hex accounts, known states and claim permissions, and at most 16
+      distinct `nominate` targets. `nominate` refuses a target that is not a
+      validator candidate, as `staking.nominate` does.
+    - Types: `Pool`, `PoolSummary`, `PoolMember`, `PoolsConfig`, `PoolRoles`,
+      `PoolCommission`, `PoolUnbondingChunk`, `PoolState`, `ClaimPermission`,
+      `PoolBondExtra`, `CreatePoolParams`.
+- `SubmitOptions.resolveAt: 'best'`: resolves a signed transaction once it is in
+  a best block, with its dispatch result, a few blocks before finalization (the
+  default, unchanged). `onFinalized` then reports finalization as well, so a
+  caller can read again in case that best block was reorged away. Settles on polkadot-api 3's
+  `inBestBlock` event (and the earlier `txBestBlocksState`). `onReorg` reports, after
+  resolving, the tx leaving the best chain (`notInBestBlock`; it may come back) or its
+  tracking being lost (a stream error; it may still land), and passes the error only
+  when the tx is invalid on the finalized chain (`InvalidTxError`; it will not land).
+- Validator admission, mirrored from the runtime so a client can say why
+  `staking.validate` would be refused before anyone signs:
+    - `candidacyChecklist` and `firstCandidacyFailure` check in the runtime's order,
+      the commission against `config.maxCommission`;
+    - `candidacyRejection` maps the pool's `Custom(1..8)` to `CANDIDACY_REJECTIONS`
+      (7, `TooManyCandidates`: the candidate list is full; not an account
+      condition, so not in the checklist; 8, `SessionKeysInUse`: `session.setKeys`
+      or `purgeKeys` from a validator of the current or queued session, whose keys
+      an equivocation is proven against: it rotates them once out of the set);
+    - also `minSelfBond` and `isBanned`. `Admission.openFloor` is the open-mode
+      self-bond floor of the runtime read (`openModeMinSelfBond(specName)`: 1 000 ORB on
+      `orbinum-fast`, 100 000 ORB otherwise), which `candidacyChecklist` uses and
+      `minSelfBond` takes as its third argument.
+- `OperatorNode`: connects to the validator's own node and checks it is on the
+  same chain. `rotateKeysWithOwner(stash)` returns `{ keys, proof }` for `setKeys`,
+  and `hasSessionKeys` checks the keystore. Only those two RPC methods are called;
+  it never sends a seed.
+- `getEcdsaTextSigner(evmAddress, personalSign)`: the `SubstrateSigner` of an EVM
+  account (MetaMask and similar), for runtime spec 21. The wallet signs the same
+  readable text as an ed25519 account with `personal_sign` (EIP-191). The runtime
+  checks it as `EcdsaText` (`0x05`) for the account the address maps to
+  (`[h160 ‖ 0x00×12]`). Before anything is sent, the signature is recovered locally:
+  `v` 27/28 is normalised, and a high `s` or another address is refused
+  (`recoverEip191`, `eip191Message`, `TAG_ECDSA_TEXT`). The EIP-191 prefix carries the
+  text's UTF-8 byte length. The shared vectors carry deterministic signatures over
+  Alith's key, one over a text with multi-byte characters, which the tests reproduce
+  byte for byte.
+- `pools.pendingSlashes(id)`: deferred slashes (`Staking.UnappliedSlashes`) that will
+  reach the pool when they apply, which every member then shares, including one who
+  joins now (`PoolPendingSlash`); those `Staking.CancelledSlashes` covers are left out.
+- `paidAutomatically(era, status, validator?)`: with a validator, false once the
+  payment cursor passed it (a reward still pending there was skipped and needs a
+  claim), and false for an era within `ExpiryMargin` eras of leaving staking's history
+  (`AutoPayoutStatus.safeFrom`), which the chain may drop unpaid. `AutoPayoutStatus.paying`
+  lists the era's `validators` in payment order and the `next` page to pay.
+- `claimableEras(config)`: the eras `payoutStakers` still pays, from `plannedEra -
+  historyDepth` to `activeEra - 1`.
+- `Admission.now` is the block a transaction sent now is checked in (best + 1), so a
+  ban ending there no longer shows as in force.
+- Constants: `MAX_NOMINATIONS`, `OPEN_MODE_MIN_SELF_BOND`,
+  `FAST_RUNTIME_OPEN_MODE_MIN_SELF_BOND`,
+  `PERBILL`, `ERA_FEE_POOL_ACCOUNT` (`orb/feep`) and `GOVERNANCE_ACCOUNT`
+  (`py/trsry`).
+
+### Changed
+
+- **Breaking:** `MIN_SPEC_VERSION` is 21. `OrbinumClient.connect` refuses older
+  runtimes: their staking, pools and text signatures differ from what this
+  version encodes.
+- **Breaking for staking texts:** the ed25519 text signer now shows the parameters
+  of staking calls, matching runtime spec 21:
+    - amount and reward destination for `bond`;
+    - amount for `bond_extra`, `unbond` and `rebond`;
+    - destination for `set_payee`;
+    - every target for `nominate`;
+    - commission and block for `validate`;
+    - validator and era for payouts.
+
+    The text no longer names only the call, so a site cannot get a bond with
+    someone else's payee signed blind. New shared vectors are in
+    `tests/fixtures/ed25519_text_vectors.json`, and `formatPercent` is exported
+    from the summary.
+
+- **Breaking for every text signature** (ed25519 and EVM), matching runtime spec 21:
+    - every text gains `expires: never` or `expires: within {period} blocks`,
+      then `nonce: {n}`, before the tip. `summaryLines` takes the payload's era
+      bytes and nonce as fourth and fifth arguments;
+    - `ShieldedPool.shield` shows the fingerprints of its commitment and memo
+      (`commitment: 0x{first 8 bytes}…{last 8 bytes}`, `memo:` over
+      `blake2_256(memo)`), so the app can show the same values next to the wallet
+      prompt;
+    - `System.remark` shows its length and fingerprint, `Balances.transfer_all`
+      shows `keep alive`, and `Staking.payout_stakers_by_page` shows `page`;
+    - nomination pool calls are text-signable with their parameters: `join`,
+      `bond_extra`, `bond_extra_other`, `claim_payout`, `claim_payout_other`,
+      `unbond`, `withdraw_unbonded`, `pool_withdraw_unbonded`, `create`,
+      `nominate`, `set_state`, `chill` and `set_claim_permission`;
+    - the pool commission calls are text-signable with every parameter:
+      `set_commission` (`pool`, `commission: {percent}` and `payee: 0x…`, or
+      `commission: none`), `set_commission_max` (`max commission`),
+      `set_commission_change_rate` (`max increase`, `min delay: {n} blocks`),
+      `claim_commission` (`pool`) and `set_commission_claim_permission`
+      (`permission: permissionless`, the account, or `root only`). Bytes the
+      runtime would not decode (a `Perbill` above 100 %, an unknown variant, a
+      wrong length) are refused. Metadata and role changes stay refused.
+
+    `textFingerprint`, `textHashFingerprint` and `textExpiry` are exported. Texts
+    rendered by an older version fail as `BadProof` on spec 21.
+
+### Security
+
+- **Text signers refuse calls the runtime does not accept as text.** In spec 21,
+  `Ed25519Text`, `Ed25519WrappedText` and `EcdsaText` verify only for calls whose text
+  shows every parameter that moves value or authority. Other calls, such as `EVM.call`
+  or `Balances.burn`, would show only their name. The ed25519 and EVM signers now throw
+  (`assertTextSignable`, `isTextSignable`) before the wallet is asked to sign one. The
+  shared vectors carry the runtime's verdict per call, and the tests compare it; they
+  cover every signable staking, session and validator-set call (`bond_extra`, `rebond`,
+  `withdraw_unbonded`, each `set_payee` destination, `purge_keys`,
+  `deregister_validator`) and pools `bond_extra` from rewards. `Session.set_keys` shows the keys and `Staking.kick` the nominators; lists are capped
+  at `MAX_LISTED_ACCOUNTS` (16).
+- **Raw `Ecdsa` (`0x02`) no longer verifies on spec 21**: it signed
+  `blake2_256(payload)`, a digest a wallet, MPC or KMS could be handed blind. EVM
+  accounts sign only the text (`EcdsaText`); this package never produced `0x02`.
+- **Fingerprints are 8 + 8 bytes** (`textFingerprint`, `textHashFingerprint`):
+  128 bits, so no lookalike commitment, memo or remark can be searched for. The
+  signed text shows the nonce, so a replayed or queued transaction of the same call
+  reads differently.
+- **EVM accounts are shown as their address in the signed text**: an account
+  `[address | 0x00×12]` (recipients, reward destinations, members, pool roles,
+  validators, payees) is written as its 20-byte address (`0x` + 40 hex), the way a
+  MetaMask user knows it; any other account stays in full (`0x` + 64 hex). An account
+  that shares an EVM address's first 20 bytes no longer reads like it. Session keys
+  stay in full. Shared vectors `transfer_to_evm_account` and
+  `transfer_to_evm_lookalike`.
+- **`OperatorNode` connects only to loopback URLs** (`isLoopbackNodeUrl`: `ws://` or
+  `wss://` on `localhost`, `127.0.0.1` or `[::1]`, with no credentials). Session keys
+  generated by someone else's node are keys they hold, and could get the validator
+  slashed.
+- **Validation:**
+    - `OperatorNode` checks the genesis hash, keys and proof shape;
+    - staking arguments check `u32` bounds and the type of `blocked`;
+    - `kick` dedupes and caps at 16;
+    - `payeeArg` refuses `Controller` and unknown destinations;
+    - `getEcdsaTextSigner` and `recoverEip191` require a `0x` EVM address.
+- **Calls the chain would take the fee for and then refuse are refused before
+  signing:**
+    - `bond` from a pool member, and `pools.join` from an account that stakes
+      directly: the chain keeps the two apart (`Restricted`);
+    - `pools.join` below `MinJoinBond`;
+    - `validate` below `MinCommission`;
+    - `nominate` of a validator that blocks new nominations and is not already a target
+      (`BadTarget`);
+    - `kick` of a nominator whose only target would go (the runtime's call filter);
+    - `bond` below both role minimums, or whose free balance after the fee (staking
+      locks at most that) is; `bondExtra` and `rebond` that leave the bond below them;
+      an `unbond` that leaves a nominator or validator bonded below its role's minimum
+      (`InsufficientBond`). Unbonding everything goes through: the chain chills the
+      stash;
+    - `pools.nominate` of a validator that blocks new nominations and is not already
+      one of the pool's targets (`BadTarget`).
+
+  `nominate` and `pools.nominate` keep a current target that stopped validating, as the
+  chain does, instead of refusing it.
+
+  Argument errors still throw synchronously.
+- **ECDSA accounts of a polkadot-js extension get a signer that refuses** with a clear
+  error: the chain verifies ECDSA only as EIP-191 text from an EVM wallet, so their raw
+  signature never verified.
+- **The published package is tied to its commit.** The npm package is published with
+  provenance (`--provenance`, OIDC), workflow actions are pinned by commit SHA, the
+  publish job gets only the permissions it uses and no dependency cache, and CI's secret
+  scan runs a pinned TruffleHog release instead of its `main` branch.
+
+### Fixed
+
+- `polkadot-api` 3.3.0 (peer `^3.3.0`), with `metadata-builders` 0.15.2,
+  `substrate-bindings` 0.21.2 and `tx-utils` 0.6.2. In 3.1.0, a client that
+  connected while the finalized block was the one carrying a `setCode` never
+  became usable: no finalized block, no query and no transaction resolved, even
+  after finality moved on. 3.2.2 and later connect normally.
+- The ed25519 text signer accepts runtime spec 21, which adds the
+  `CheckValidatorCandidacy` transaction extension. It encodes to nothing, so the
+  signed bytes are unchanged; `signingPayload` drops it (and any extension in
+  `ZERO_SIZED_EXTENSIONS`) before checking the list, and still refuses any other
+  extension it does not know.
+
 ## [0.14.0] - 2026-11-08
 
 ### Added

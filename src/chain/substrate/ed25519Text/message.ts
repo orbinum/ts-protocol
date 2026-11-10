@@ -11,6 +11,11 @@ import { toHex } from '../../../foundation/encoding/hex';
 export const TAG_ED25519_TEXT = 0x03;
 /** `OrbinumSignature::Ed25519WrappedText`: the text in `<Bytes>` (an extension's `signRaw`). */
 export const TAG_ED25519_WRAPPED_TEXT = 0x04;
+export const TAG_ECDSA_TEXT = 0x05;
+
+/** What an EVM wallet's `personal_sign` hashes (EIP-191): prefix, decimal byte length, message. */
+export const eip191Message = (message: Uint8Array) =>
+    concat(utf8(`\x19Ethereum Signed Message:\n${message.length}`), message);
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
 

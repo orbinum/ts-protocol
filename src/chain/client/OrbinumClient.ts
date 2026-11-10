@@ -2,6 +2,8 @@ import { SubstrateClient } from '../substrate/SubstrateClient';
 import { EvmClient } from '../evm/EvmClient';
 import { EvmExplorer } from '../evm/explorer/EvmExplorer';
 import { ShieldedPoolModule } from '../pallet/shielded-pool/ShieldedPoolModule';
+import { StakingModule } from '../pallet/staking/StakingModule';
+import { NominationPoolsModule } from '../pallet/nomination-pools/NominationPoolsModule';
 import { ChainModule } from '../rpc/ChainModule';
 import { PrivacyModule } from '../rpc/PrivacyModule';
 import { ZkVerifierModule } from '../pallet/zk-verifier/ZkVerifierModule';
@@ -59,6 +61,10 @@ export class OrbinumClient {
     readonly evmExplorer: EvmExplorer | null;
     /** Shielded-pool extrinsics and Merkle tree queries (`shield`, `unshield`, `privateTransfer`, …). */
     readonly shieldedPool: ShieldedPoolModule;
+    /** Bonding, nominating, validating, payouts and session keys (`bond`, `nominate`, `validate`, …). */
+    readonly staking: StakingModule;
+    /** Nomination pools: create, join, bond more, claim, unbond, nominate (`join`, `claimPayout`, …). */
+    readonly pools: NominationPoolsModule;
     /** Typed access to `privacy_*` custom RPC endpoints. */
     readonly privacy: PrivacyModule;
     /** Typed access to general chain state via `chain_*` custom RPC endpoints. */
@@ -96,6 +102,8 @@ export class OrbinumClient {
         this.evm = evm;
         this.evmExplorer = evm ? new EvmExplorer(evm) : null;
         this.shieldedPool = new ShieldedPoolModule(substrate);
+        this.staking = new StakingModule(substrate);
+        this.pools = new NominationPoolsModule(substrate);
         this.privacy = new PrivacyModule(substrate);
         this.chain = new ChainModule(substrate);
         this.zkVerifier = new ZkVerifierModule(substrate);

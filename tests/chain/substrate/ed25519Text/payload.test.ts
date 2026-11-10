@@ -42,6 +42,16 @@ describe('signingPayload', () => {
         expect(toHex(payload.slice(23, 55))).toBe(GENESIS);
     });
 
+    it('signs the same bytes when the runtime lists a zero-sized extension', () => {
+        const before = pjs(remark('orbinum solana probe'));
+        const after = {
+            ...before,
+            signedExtensions: [...before.signedExtensions, 'CheckValidatorCandidacy'],
+        };
+        expect(toHex(signingPayload(after))).toBe(toHex(signingPayload(before)));
+        expect(toHex(signingPayload(after))).toBe(SHORT_PAYLOAD);
+    });
+
     it('refuses extensions the runtime does not sign', () => {
         const p = pjs(remark('a'));
         p.signedExtensions = [...p.signedExtensions, 'ChargeAssetTxPayment'];

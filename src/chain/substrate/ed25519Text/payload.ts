@@ -26,8 +26,16 @@ export const SIGNED_EXTENSIONS = [
     'CheckMetadataHash',
 ];
 
+/**
+ * Extensions the runtime may add that encode to nothing, neither in the extrinsic
+ * nor in the signed payload, so the bytes below are the same with or without them.
+ * `CheckValidatorCandidacy` arrives with runtime spec 21.
+ */
+export const ZERO_SIZED_EXTENSIONS = ['CheckValidatorCandidacy'];
+
 export function signingPayload(p: PjsPayload): Uint8Array {
-    if (p.signedExtensions.join() !== SIGNED_EXTENSIONS.join()) {
+    const extensions = p.signedExtensions.filter((id) => !ZERO_SIZED_EXTENSIONS.includes(id));
+    if (extensions.join() !== SIGNED_EXTENSIONS.join()) {
         throw new Error(
             `Unexpected signed extensions [${p.signedExtensions.join(', ')}]: an ed25519 ` +
                 'account cannot sign for this runtime.'

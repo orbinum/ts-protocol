@@ -22,11 +22,12 @@ const FINALIZED = {
 };
 
 /** A tx whose watch stream replays `events` in order; createAndSubmit resolves directly. */
-function fakeTx(events: Array<Record<string, unknown>> = [{ ...FINALIZED }]) {
+function fakeTx(events: Array<Record<string, unknown>> = [{ ...FINALIZED }], failure?: unknown) {
     const createAndSubmit = vi.fn().mockResolvedValue(FINALIZED);
     const createSubmitAndWatch = vi.fn().mockReturnValue({
         subscribe(observer: { next(e: unknown): void; error(e: unknown): void }) {
             for (const event of events) observer.next(event);
+            if (failure !== undefined) observer.error(failure);
             return {};
         },
     });
@@ -116,6 +117,119 @@ describe('signAndSubmitTx', () => {
         await signAndSubmitTx(tx, SIGNER, { onBroadcast: () => {}, mortality: { mortal: false } });
 
         expect(createSubmitAndWatch).toHaveBeenCalledWith(SIGNER, { mortality: { mortal: false } });
+    });
+
+    it("resolves at best-block inclusion with resolveAt: 'best', dispatch result included", async () => {
+        const inBest = (found: boolean, ok = true) => ({
+            type: 'txBestBlocksState',
+            found,
+            txHash: '0xabc',
+            block: { hash: '0xbest', number: 5 },
+            ok,
+            ...(ok
+                ? {}
+                : { dispatchError: { type: 'Module', value: { type: 'Staking.BadTarget' } } }),
+        });
+        // Not yet in a block: keeps waiting. The first inclusion settles it.
+        const { tx, createSubmitAndWatch } = fakeTx([
+            { type: 'broadcasted' },
+            inBest(false),
+            inBest(true),
+            { ...FINALIZED },
+        ]);
+        const result = await signAndSubmitTx(tx, SIGNER, { resolveAt: 'best' });
+        expect(result).toMatchObject({ ok: true, blockHash: '0xbest', blockNumber: 5 });
+        // The option is ours, never PAPI's.
+        expect(createSubmitAndWatch).toHaveBeenCalledWith(SIGNER);
+
+        const failed = fakeTx([inBest(true, false)]);
+        const refused = await signAndSubmitTx(failed.tx, SIGNER, { resolveAt: 'best' });
+        expect(refused.ok).toBe(false);
+        expect(refused.error).toContain('BadTarget');
+    });
+
+    it("resolves on polkadot-api 3's inBestBlock, the event a live node emits", async () => {
+        const { tx } = fakeTx([
+            { type: 'broadcasted' },
+            {
+                type: 'inBestBlock',
+                txHash: '0xabc',
+                block: { hash: '0xbest', number: 5, index: 1 },
+                ok: true,
+                events: [],
+            },
+            { ...FINALIZED },
+        ]);
+        const result = await signAndSubmitTx(tx, SIGNER, { resolveAt: 'best' });
+        expect(result).toMatchObject({ ok: true, blockHash: '0xbest', blockNumber: 5 });
+    });
+
+    it('with resolveAt best, reports finalization too, after resolving', async () => {
+        const seen: string[] = [];
+        const { tx } = fakeTx([
+            {
+                type: 'txBestBlocksState',
+                found: true,
+                txHash: '0xabc',
+                block: { hash: '0xbest', number: 5 },
+                ok: true,
+            },
+            { ...FINALIZED },
+        ]);
+        const result = await signAndSubmitTx(tx, SIGNER, {
+            resolveAt: 'best',
+            onFinalized: (r) => seen.push(`finalized #${r.blockNumber}`),
+        });
+        expect(result.blockNumber).toBe(5);
+        expect(seen).toEqual(['finalized #7']);
+    });
+
+    it('with resolveAt best, reports the tx leaving the best chain, lost or invalid', async () => {
+        const inBest = {
+            type: 'inBestBlock',
+            txHash: '0xabc',
+            block: { hash: '0xbest', number: 5, index: 1 },
+            ok: true,
+            events: [],
+        };
+        const seen: unknown[] = [];
+        const reorged = fakeTx([inBest, { type: 'notInBestBlock', txHash: '0xabc' }, inBest]);
+        await signAndSubmitTx(reorged.tx, SIGNER, {
+            resolveAt: 'best',
+            onReorg: (e) => seen.push(e ?? 'left'),
+        });
+        expect(seen).toEqual(['left']);
+
+        // Invalid on the finalized chain: it will not land, so the error is passed.
+        const invalid = Object.assign(new Error('Stale'), { name: 'InvalidTxError' });
+        const dropped = fakeTx([inBest], invalid);
+        const result = await signAndSubmitTx(dropped.tx, SIGNER, {
+            resolveAt: 'best',
+            onReorg: (e) => seen.push(e ?? 'unknown'),
+        });
+        expect(result.blockNumber).toBe(5);
+        // Tracking lost (a stream failure): it may still land, so no error is passed.
+        const lost = fakeTx([inBest], new Error('BlockNotPinnedError'));
+        await signAndSubmitTx(lost.tx, SIGNER, {
+            resolveAt: 'best',
+            onReorg: (e) => seen.push(e ?? 'unknown'),
+        });
+        expect(seen).toEqual(['left', invalid, 'unknown']);
+    });
+
+    it('ignores the best block without resolveAt', async () => {
+        const { tx } = fakeTx([
+            {
+                type: 'txBestBlocksState',
+                found: true,
+                txHash: '0xabc',
+                block: { hash: '0xbest', number: 5 },
+                ok: true,
+            },
+            { ...FINALIZED },
+        ]);
+        const result = await signAndSubmitTx(tx, SIGNER, { onBroadcast: () => {} });
+        expect(result.blockNumber).toBe(7);
     });
 });
 

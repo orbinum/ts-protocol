@@ -24,6 +24,25 @@ export type UnsafeTxOptions = Record<string, unknown>;
  */
 export type SubmitOptions = UnsafeTxOptions & {
     onBroadcast?: () => void;
+    /**
+     * `'best'` resolves once the tx is in a best block, with its dispatch result,
+     * one finality lag (a few blocks) before `'finalized'`, the default. Read the
+     * state it changed at the best block too, or it will look unchanged.
+     */
+    resolveAt?: 'best' | 'finalized';
+    /**
+     * With `resolveAt: 'best'`, called once the tx is finalized too: a best block can
+     * be reorged away after resolving, so state read then may need reading again.
+     */
+    onFinalized?: (result: TxResult) => void;
+    /**
+     * With `resolveAt: 'best'`, called after resolving when the tx leaves the best chain
+     * (a reorg; it may be included again) or its tracking is lost (the connection or
+     * the block stream failed): read again, it may still land. Called with the error
+     * only when the tx is invalid on the finalized chain (`InvalidTxError`): it will
+     * not land.
+     */
+    onReorg?: (invalid?: unknown) => void;
 };
 
 /**
@@ -108,6 +127,8 @@ export function feePaidFrom(payload: TxFinalizedPayload): string | null {
  * real `Transaction` so that drift breaks the typecheck instead.
  */
 export interface UnsafeTx {
+    /** The fee `creator` would pay, as polkadot-api estimates it. */
+    getEstimatedFees?(creator: SubstrateSigner, options?: UnsafeTxOptions): Promise<bigint>;
     createAndSubmit(
         creator: SubstrateSigner,
         options?: UnsafeTxOptions
@@ -131,13 +152,14 @@ export function callUnsafeTx(txEntry: unknown, ...args: unknown[]): UnsafeTx {
 }
 
 /**
- * Signs and submits, resolving on finalization. Refuses a shielded-pool spend
- * (`assertNotSignedSpend`) before the signer sees it.
+ * Signs and submits, resolving on finalization, or on best-block inclusion with
+ * `resolveAt: 'best'`. Refuses a shielded-pool spend (`assertNotSignedSpend`)
+ * before the signer sees it.
  *
- * With `onBroadcast` the tx goes through `createSubmitAndWatch`, whose event
- * stream is the only place the mempool acknowledgement is visible; without it
- * the plain promise path is kept, byte-for-byte the behaviour every existing
- * caller had.
+ * With `onBroadcast` or `resolveAt: 'best'` the tx goes through
+ * `createSubmitAndWatch`, whose event stream is the only place the mempool
+ * acknowledgement and the best-block inclusion are visible; otherwise the plain
+ * promise path is kept, byte-for-byte the behaviour every existing caller had.
  */
 export function signAndSubmitTx(
     tx: UnsafeTx,
@@ -149,27 +171,51 @@ export function signAndSubmitTx(
     } catch (e) {
         return Promise.reject(e);
     }
-    const { onBroadcast, ...txOptions } = options ?? {};
+    const { onBroadcast, resolveAt, onFinalized, onReorg, ...txOptions } = options ?? {};
     const opts = Object.keys(txOptions).length > 0 ? (txOptions as UnsafeTxOptions) : undefined;
+    const atBest = resolveAt === 'best';
 
-    if (!onBroadcast) {
+    if (!onBroadcast && !atBest) {
         return (
             opts !== undefined ? tx.createAndSubmit(signer, opts) : tx.createAndSubmit(signer)
         ).then(toTxResult);
     }
 
     return new Promise<TxResult>((resolve, reject) => {
+        let resolved = false;
         const stream =
             opts !== undefined
                 ? tx.createSubmitAndWatch(signer, opts)
                 : tx.createSubmitAndWatch(signer);
         stream.subscribe({
             next(event) {
-                if (event.type === 'broadcasted') onBroadcast();
-                if (event.type === 'finalized')
+                if (event.type === 'broadcasted') onBroadcast?.();
+                // polkadot-api 3 emits `inBestBlock` / `notInBestBlock`; earlier versions
+                // `txBestBlocksState` with `found`.
+                const found = (event as { found?: boolean }).found;
+                const inBest =
+                    event.type === 'inBestBlock' ||
+                    (event.type === 'txBestBlocksState' && found === true);
+                const leftBest =
+                    event.type === 'notInBestBlock' ||
+                    (event.type === 'txBestBlocksState' && found === false);
+                if (resolved && atBest && leftBest) onReorg?.();
+                // The first inclusion settles it; a later reorg goes to `onReorg`.
+                if (!resolved && (event.type === 'finalized' || (atBest && inBest))) {
+                    resolved = true;
                     resolve(toTxResult(event as unknown as TxFinalizedPayload));
+                }
+                if (event.type === 'finalized' && atBest) {
+                    onFinalized?.(toTxResult(event as unknown as TxFinalizedPayload));
+                }
             },
-            error: reject,
+            error(e) {
+                if (!resolved) reject(e);
+                else
+                    onReorg?.(
+                        (e as { name?: unknown } | null)?.name === 'InvalidTxError' ? e : undefined
+                    );
+            },
         });
     });
 }

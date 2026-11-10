@@ -1,5 +1,5 @@
 /**
- * A transaction signer for an ed25519 account (runtime spec 20+).
+ * A transaction signer for an ed25519 account (runtime spec 21).
  *
  * The runtime never accepts a raw ed25519 signature over the signing payload: a key that
  * signs arbitrary bytes could be talked into authorising a transaction shown as a "login
@@ -14,9 +14,10 @@ import { getTxCreatorFromPjs } from 'polkadot-api/pjs-signer';
 import type { SignPayload, SignRaw } from 'polkadot-api/pjs-signer';
 import { fromHex, toHex } from '../../../foundation/encoding/hex';
 import { callNameFrom } from './callName';
+import type { CallName } from './summary';
 import { TAG_ED25519_TEXT, TAG_ED25519_WRAPPED_TEXT, textMessage, wrapBytes } from './message';
 import { signingPayload } from './payload';
-import { summaryLines } from './summary';
+import { isTextSignable, summaryLines } from './summary';
 
 /**
  * Signs bytes with the account's ed25519 key: a wallet's `signRaw` (which signs them
@@ -30,6 +31,19 @@ export class Ed25519TextSignatureError extends Error {
 }
 
 const SIGNATURE_BYTES = 64;
+
+/**
+ * Refuses a call the runtime does not accept as text: its text would hide what it does
+ * (the runtime would refuse it anyway, but only after the wallet signed).
+ */
+export function assertTextSignable(call: Uint8Array, name: CallName | null): void {
+    if (!isTextSignable(call, name)) {
+        throw new Ed25519TextSignatureError(
+            `${name ? `${name.pallet}.${name.call}` : 'This call'} cannot be signed as text: ` +
+                'its parameters would not be shown. Use a Substrate (sr25519) account for it.'
+        );
+    }
+}
 
 /** `0x04` for a signature over the `<Bytes>`-wrapped text, `0x03` for the bare text. */
 function tagFor(sig: Uint8Array, text: Uint8Array, publicKey: Uint8Array): number | null {
@@ -50,7 +64,9 @@ export function textSignPayload(
 ): SignPayload {
     return async (p) => {
         const call = fromHex(p.method);
-        const summary = summaryLines(call, callNameFrom(metadata, call), BigInt(p.tip));
+        const name = callNameFrom(metadata, call);
+        assertTextSignable(call, name);
+        const summary = summaryLines(call, name, BigInt(p.tip), fromHex(p.era), BigInt(p.nonce));
         const text = textMessage(signingPayload(p), fromHex(p.genesisHash), summary);
         const sig = await sign(text);
         if (sig.length !== SIGNATURE_BYTES) {

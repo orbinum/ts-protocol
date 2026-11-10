@@ -12,8 +12,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Each job asks for what it needs.
 permissions:
-  contents: write
+  contents: read
 
 # Never cancel a release in flight: a run killed between `git push origin <tag>`
 # and the npm publish leaves a tag with no package behind it. That state is
@@ -49,7 +50,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.SHA }}
           fetch-depth: 0
@@ -129,10 +130,14 @@ jobs:
     needs: verify
     if: needs.verify.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # npm provenance (`--provenance`) ties the tarball to this run and commit.
+      id-token: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.SHA }}
           fetch-depth: 0
@@ -143,15 +148,16 @@ jobs:
           fetch-tags: true
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
         with:
           run_install: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
-          cache: pnpm
+          # No dependency cache: one that any branch's run can write must not
+          # feed what is published.
           registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
@@ -228,7 +234,7 @@ jobs:
       # Idempotent by design: the action updates an existing release rather than
       # failing, so a retry refreshes the assets and moves on to the publish.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           tag_name: ${{ needs.verify.outputs.tag }}
           target_commitish: ${{ env.SHA }}
@@ -257,7 +263,7 @@ jobs:
       # string rather than erroring.
       - name: Publish to npm
         run: |
-          pnpm publish --no-git-checks --access public
+          pnpm publish --no-git-checks --access public --provenance
           echo "✅ Published @orbinum/protocol@${{ needs.verify.outputs.version }} to npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

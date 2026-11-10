@@ -16,7 +16,7 @@ import {
     Ed25519TextSignatureError,
     textSignPayload,
 } from '../../../../src/chain/substrate/ed25519Text/signer';
-import { GENESIS, SHORT_PAYLOAD, nameOf, pjs, remark } from './fixtures';
+import { GENESIS, SHORT_PAYLOAD, nameOf, pjs, remark, remarkSummary } from './fixtures';
 
 const callNameFrom = vi.hoisted(() => vi.fn());
 vi.mock('../../../../src/chain/substrate/ed25519Text/callName', () => ({ callNameFrom }));
@@ -51,7 +51,11 @@ describe('textSignPayload', () => {
         expect(bytes[0]).toBe(TAG_ED25519_WRAPPED_TEXT);
         expect(bytes.length).toBe(65);
         expect(sign).toHaveBeenCalledWith(
-            textMessage(fromHex(SHORT_PAYLOAD), fromHex(GENESIS), 'System.remark')
+            textMessage(
+                fromHex(SHORT_PAYLOAD),
+                fromHex(GENESIS),
+                remarkSummary('orbinum solana probe')
+            )
         );
     });
 
@@ -70,12 +74,16 @@ describe('textSignPayload', () => {
         expect(callNameFrom).toHaveBeenCalledWith(METADATA, fromHex(remark('a')));
     });
 
-    it('renders a non-zero tip into the signed text', async () => {
+    it('renders the nonce and a non-zero tip into the signed text', async () => {
         const sign = vi.fn(signWith(4));
         const tip = '0x' + (10n ** 16n).toString(16).padStart(32, '0');
-        await textSignPayload(METADATA, publicOf(4), sign)({ ...pjs(remark('a')), tip });
+        await textSignPayload(
+            METADATA,
+            publicOf(4),
+            sign
+        )({ ...pjs(remark('a')), nonce: '0x0000002a', tip });
         expect(new TextDecoder().decode(sign.mock.calls[0]![0])).toContain(
-            '\naction: System.remark\ntip: 0.01 ORB\n'
+            '\nexpires: never\nnonce: 42\ntip: 0.01 ORB\n'
         );
     });
 
@@ -112,7 +120,7 @@ describe('textSignPayload', () => {
 
     it('returns the hex the extrinsic carries: the tag, then the signature', async () => {
         const p = pjs(remark('a'));
-        const text = textMessage(signingPayload(p), fromHex(GENESIS), 'System.remark');
+        const text = textMessage(signingPayload(p), fromHex(GENESIS), remarkSummary('a'));
         const { signature } = await textSignPayload(METADATA, publicOf(8), signWith(8))(p);
         const expected = ed25519.sign(wrapBytes(text), secret(8));
         expect(signature).toBe(toHex(Uint8Array.of(TAG_ED25519_WRAPPED_TEXT, ...expected)));

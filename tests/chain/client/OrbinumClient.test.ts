@@ -3,6 +3,8 @@ import { OrbinumClient } from '../../../src/chain/client/OrbinumClient';
 import { SubstrateClient } from '../../../src/chain/substrate/SubstrateClient';
 import { EvmClient } from '../../../src/chain/evm/EvmClient';
 import { EvmExplorer } from '../../../src/chain/evm/explorer/EvmExplorer';
+import { StakingModule } from '../../../src/chain/pallet/staking/StakingModule';
+import { NominationPoolsModule } from '../../../src/chain/pallet/nomination-pools/NominationPoolsModule';
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
@@ -24,7 +26,7 @@ vi.mock('../../../src/chain/evm/explorer/EvmExplorer', () => ({
 
 function makeSubstrate(): SubstrateClient {
     return {
-        request: vi.fn().mockResolvedValue({ specVersion: 19 }),
+        request: vi.fn().mockResolvedValue({ specVersion: 21 }),
         unsafe: { tx: {} },
         destroy: vi.fn(),
         getChainInfo: vi.fn(),
@@ -62,13 +64,13 @@ beforeEach(() => {
 // ─── OrbinumClient.connect ────────────────────────────────────────────────────
 
 describe('OrbinumClient.connect', () => {
-    it('refuses a runtime older than spec 19 and closes the connection', async () => {
+    it('refuses a runtime older than spec 21 and closes the connection', async () => {
         const substrate = makeSubstrate();
-        vi.mocked(substrate.request).mockResolvedValue({ specVersion: 18 });
+        vi.mocked(substrate.request).mockResolvedValue({ specVersion: 20 });
         vi.mocked(SubstrateClient.connect).mockResolvedValue(substrate);
 
         await expect(OrbinumClient.connect({ substrateWs: 'ws://localhost:9944' })).rejects.toThrow(
-            /spec 18.*spec 19 or later/
+            /spec 20.*spec 21 or later/
         );
         expect(substrate.destroy).toHaveBeenCalledTimes(1);
     });
@@ -80,6 +82,8 @@ describe('OrbinumClient.connect', () => {
         const client = await OrbinumClient.connect({ substrateWs: 'ws://localhost:9944' });
 
         expect(client).toBeInstanceOf(OrbinumClient);
+        expect(client.staking).toBeInstanceOf(StakingModule);
+        expect(client.pools).toBeInstanceOf(NominationPoolsModule);
     });
 
     it('calls SubstrateClient.connect with the wsUrl', async () => {

@@ -11,7 +11,7 @@
  *
  * One change to what an extension hands back: an ed25519 account's `txCreator`
  * signs the readable transaction text (`getEd25519TextSigner`), the only ed25519
- * signature runtime spec 20 accepts. The extension's own creator signs the raw
+ * signature the runtime accepts. The extension's own creator signs the raw
  * payload, which the runtime refuses; swapping it here means no consumer can
  * forget to.
  *
@@ -70,17 +70,31 @@ export async function connectInjectedExtension(
 }
 
 /**
+ * The chain checks an ECDSA signature only as EIP-191 text from an EVM wallet: a raw
+ * ECDSA signature from an extension account never verifies.
+ */
+const ECDSA_EXTENSION =
+    'ECDSA extension accounts cannot sign Orbinum transactions; use an sr25519 or ed25519 account, or an EVM wallet';
+
+/**
  * ed25519 accounts with a `txCreator` that signs the transaction text through the
- * account's own `signBytes` (the wallet's `signRaw`); every other account as is.
+ * account's own `signBytes` (the wallet's `signRaw`); ECDSA accounts with one that
+ * refuses before asking the wallet; every other account as is.
  */
 function withTextSigners(extension: InjectedExtension): InjectedExtension {
     // Keyed by the extension's account object, so repeated reads hand back the same signer.
     const swapped = new WeakMap<InjectedPolkadotAccount, InjectedPolkadotAccount>();
     const swapOne = (account: InjectedPolkadotAccount): InjectedPolkadotAccount => {
-        if (account.type !== 'ed25519') return account;
+        if (account.type !== 'ed25519' && account.type !== 'ecdsa') return account;
         let text = swapped.get(account);
         if (!text) {
-            const txCreator = getEd25519TextSigner(account.address, account.txCreator.signBytes);
+            const txCreator =
+                account.type === 'ed25519'
+                    ? getEd25519TextSigner(account.address, account.txCreator.signBytes)
+                    : (Object.assign(() => Promise.reject(new Error(ECDSA_EXTENSION)), {
+                          publicKey: account.txCreator.publicKey,
+                          signBytes: account.txCreator.signBytes,
+                      }) as unknown as InjectedPolkadotAccount['txCreator']);
             text = { ...account, txCreator };
             swapped.set(account, text);
         }

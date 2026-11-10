@@ -148,6 +148,14 @@ describe('connectInjectedExtension on a page', () => {
         expect(typeof sr?.txCreator).toBe('function');
     });
 
+    it('gives ECDSA accounts a signer that refuses before asking the wallet', async () => {
+        const { signRaw } = injectExtension([{ address: ED, type: 'ecdsa' }]);
+        const [ecdsa] = (await connectInjectedExtension('talisman')).getAccounts();
+        const sign = ecdsa!.txCreator as unknown as () => Promise<string>;
+        await expect(sign()).rejects.toThrow(/ECDSA extension accounts cannot sign/);
+        expect(signRaw).not.toHaveBeenCalled();
+    });
+
     it('hands back the same signer on every read', async () => {
         textSigner.mockReset().mockImplementation(() => ({ kind: 'text-signer' }));
         injectExtension([{ address: ED, type: 'ed25519' }]);

@@ -154,6 +154,12 @@ describe('StakingModule calls', () => {
         expect(args('Staking.kick')).toEqual({ who: [BOB] });
         await module.payoutStakers(ALICE, 7, signer);
         expect(args('Staking.payout_stakers')).toEqual({ validator_stash: ALICE, era: 7 });
+        await module.payoutStakersByPage(ALICE, 7, 2, signer);
+        expect(args('Staking.payout_stakers_by_page')).toEqual({
+            validator_stash: ALICE,
+            era: 7,
+            page: 2,
+        });
         await module.purgeKeys(signer);
         expect(args('Session.purge_keys')).toEqual({});
         await module.deregisterValidator(signer);
@@ -432,11 +438,13 @@ describe('StakingModule reads', () => {
                             MinValidatorBond: value(20n),
                             MinCommission: value(5),
                             MaxCommission: value(100_000_000),
+                            AreNominatorsSlashable: value(false),
                         },
                     },
                     constants: {
                         Staking: {
                             BondingDuration: vi.fn().mockResolvedValue(28),
+                            NominatorFastUnbondDuration: vi.fn().mockResolvedValue(2),
                             HistoryDepth: vi.fn().mockResolvedValue(84),
                             SessionsPerEra: vi.fn().mockResolvedValue(6),
                         },
@@ -454,6 +462,8 @@ describe('StakingModule reads', () => {
             minCommission: 5,
             maxCommission: 100_000_000,
             bondingDuration: 28,
+            nominatorUnbondDuration: 2,
+            nominatorsSlashable: false,
             historyDepth: 84,
             sessionsPerEra: 6,
         });

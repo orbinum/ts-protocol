@@ -1,5 +1,6 @@
 export { SubstrateClient } from './SubstrateClient';
 export type { DynamicBuilder, ExtrinsicDecoder } from './SubstrateClient';
+export { guardedMetadataCache, type MetadataCache } from './metadataCache';
 export type {
     ChainInfo,
     SystemHealth,

@@ -68,6 +68,7 @@ type StakingReads = {
             CurrentEra: { getValue(): Promise<number | undefined> };
             MinNominatorBond: { getValue(at?: At): Promise<Num> };
             MinValidatorBond: { getValue(at?: At): Promise<Num> };
+            AreNominatorsSlashable: { getValue(at?: At): Promise<boolean> };
             MinCommission: { getValue(): Promise<number> };
             MaxCommission: { getValue(at?: At): Promise<number> };
             ErasRewardPoints: {
@@ -114,6 +115,7 @@ type StakingReads = {
         System: { Version(): Promise<{ spec_name: string }> };
         Staking: {
             BondingDuration(): Promise<number>;
+            NominatorFastUnbondDuration(): Promise<number>;
             HistoryDepth(): Promise<number>;
             SessionsPerEra(): Promise<number>;
         };
@@ -266,6 +268,17 @@ export function readMaxCommission(substrate: SubstrateClient): Promise<number> {
     return reads(substrate).query.Staking.MaxCommission.getValue(BEST);
 }
 
+/**
+ * Eras a nominator's or pool member's unbonded stake stays locked: the fast unbond while
+ * nominators are not slashable, the full bonding duration otherwise.
+ */
+export async function readNominatorUnbondDuration(substrate: SubstrateClient): Promise<number> {
+    const { query, constants } = reads(substrate);
+    return (await query.Staking.AreNominatorsSlashable.getValue(BEST))
+        ? constants.Staking.BondingDuration()
+        : constants.Staking.NominatorFastUnbondDuration();
+}
+
 /** Era, minimum bonds, the commission floor and ceiling, and the era constants. */
 export async function readStakingConfig(substrate: SubstrateClient): Promise<StakingConfig> {
     const { query, constants } = reads(substrate);
@@ -277,6 +290,8 @@ export async function readStakingConfig(substrate: SubstrateClient): Promise<Sta
         minCommission,
         maxCommission,
         bonding,
+        nominatorsSlashable,
+        fastUnbond,
         history,
         sessions,
     ] = await Promise.all([
@@ -287,6 +302,8 @@ export async function readStakingConfig(substrate: SubstrateClient): Promise<Sta
         query.Staking.MinCommission.getValue(),
         readMaxCommission(substrate),
         constants.Staking.BondingDuration(),
+        query.Staking.AreNominatorsSlashable.getValue(BEST),
+        constants.Staking.NominatorFastUnbondDuration(),
         constants.Staking.HistoryDepth(),
         constants.Staking.SessionsPerEra(),
     ]);
@@ -299,6 +316,8 @@ export async function readStakingConfig(substrate: SubstrateClient): Promise<Sta
         minCommission,
         maxCommission,
         bondingDuration: bonding,
+        nominatorUnbondDuration: nominatorsSlashable ? bonding : fastUnbond,
+        nominatorsSlashable,
         historyDepth: history,
         sessionsPerEra: sessions,
     };

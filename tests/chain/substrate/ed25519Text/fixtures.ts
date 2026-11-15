@@ -72,6 +72,7 @@ const NAMES: Record<string, CallName> = {
     '1c04': { pallet: 'NominationPools', call: 'pool_withdraw_unbonded' },
     '1c05': { pallet: 'NominationPools', call: 'withdraw_unbonded' },
     '1c06': { pallet: 'NominationPools', call: 'create' },
+    '1c07': { pallet: 'NominationPools', call: 'create_with_pool_id' },
     '1c08': { pallet: 'NominationPools', call: 'nominate' },
     '1c09': { pallet: 'NominationPools', call: 'set_state' },
     '1c0a': { pallet: 'NominationPools', call: 'set_metadata' },
@@ -84,7 +85,10 @@ const NAMES: Record<string, CallName> = {
     '1c12': { pallet: 'NominationPools', call: 'set_commission_max' },
     '1c13': { pallet: 'NominationPools', call: 'set_commission_change_rate' },
     '1c14': { pallet: 'NominationPools', call: 'claim_commission' },
+    '1c15': { pallet: 'NominationPools', call: 'adjust_pool_deposit' },
     '1c16': { pallet: 'NominationPools', call: 'set_commission_claim_permission' },
+    '1c17': { pallet: 'NominationPools', call: 'apply_slash' },
+    '1f00': { pallet: 'PrivateStaking', call: 'set_private' },
 };
 export const nameOf = (call: Uint8Array): CallName | null =>
     NAMES[toHex(call.slice(0, 2)).slice(2)] ?? null;

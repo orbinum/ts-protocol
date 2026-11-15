@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OrbinumClientProvider } from '../../../src/chain/client/OrbinumClientProvider';
+import {
+    ConnectionSupersededError,
+    OrbinumClientProvider,
+} from '../../../src/chain/client/OrbinumClientProvider';
 import { OrbinumClient } from '../../../src/chain/client/OrbinumClient';
 import type { ConnectionStatus } from '../../../src/chain/client/OrbinumClientProvider';
 
@@ -570,5 +573,72 @@ describe('OrbinumClientProvider — heartbeat probe tolerance', () => {
         expect(orbClient.destroy).toHaveBeenCalledTimes(1);
 
         provider.reset();
+    });
+});
+
+// ─── A reset while connecting ─────────────────────────────────────────────────
+
+describe('OrbinumClientProvider — reset while an attempt is in flight', () => {
+    it('destroys the late client and never comes back connected with it', async () => {
+        let land!: (c: OrbinumClient) => void;
+        const late = makeOrbinumClient();
+        vi.mocked(OrbinumClient.connect).mockReturnValueOnce(
+            new Promise<OrbinumClient>((resolve) => (land = resolve))
+        );
+        const provider = makeProvider({ connectTimeoutMs: 10_000 });
+        const statuses: ConnectionStatus[] = [];
+        provider.onStatusChange((e) => statuses.push(e.status));
+        provider.connect();
+        // A caller already waiting on the attempt is told to ask again, not that it failed.
+        const waiting = provider.getOrbinumClient();
+        provider.reset();
+        land(late);
+        await expect(waiting).rejects.toBeInstanceOf(ConnectionSupersededError);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(late.destroy).toHaveBeenCalled();
+        expect(provider.status).toBe<ConnectionStatus>('idle');
+        expect(statuses).not.toContain('connected');
+        await expect(provider.getOrbinumClient()).rejects.toThrow("status 'idle'");
+    });
+
+    it('a stale attempt does not disturb a newer one', async () => {
+        let landStale!: (c: OrbinumClient) => void;
+        const stale = makeOrbinumClient();
+        const fresh = makeOrbinumClient();
+        vi.mocked(OrbinumClient.connect)
+            .mockReturnValueOnce(new Promise<OrbinumClient>((resolve) => (landStale = resolve)))
+            .mockResolvedValueOnce(fresh);
+        const provider = makeProvider({ connectTimeoutMs: 10_000 });
+        provider.connect();
+        provider.reset();
+        provider.connect();
+        expect(await provider.getOrbinumClient()).toBe(fresh);
+        landStale(stale);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(stale.destroy).toHaveBeenCalled();
+        expect(provider.status).toBe<ConnectionStatus>('connected');
+        expect(await provider.getOrbinumClient()).toBe(fresh);
+    });
+
+    it('a listener that asks for the client on "connecting" awaits this attempt', async () => {
+        const client = makeOrbinumClient();
+        vi.mocked(OrbinumClient.connect).mockResolvedValueOnce(client);
+        const provider = makeProvider();
+        let asked: Promise<OrbinumClient> | null = null;
+        provider.onStatusChange((e) => {
+            if (e.status === 'connecting') asked = provider.getOrbinumClient();
+        });
+        provider.connect();
+        expect(await asked).toBe(client);
+        expect(OrbinumClient.connect).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the metadata cache to each connection', async () => {
+        vi.mocked(OrbinumClient.connect).mockResolvedValueOnce(makeOrbinumClient());
+        const metadataCache = { get: async () => null, set: () => {} };
+        const provider = makeProvider({ metadataCache });
+        provider.connect();
+        await provider.getOrbinumClient();
+        expect(vi.mocked(OrbinumClient.connect).mock.calls[0]![0]).toMatchObject({ metadataCache });
     });
 });

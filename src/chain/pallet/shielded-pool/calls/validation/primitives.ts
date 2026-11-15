@@ -3,7 +3,7 @@
  * encodings the pallet's argument types impose.
  */
 import { isHexOfLength } from '../../../../../foundation/encoding/hex';
-import { leHexToBigint } from '../../../../../foundation/encoding/bytes';
+import { bytesToBigintLE, leHexToBigint } from '../../../../../foundation/encoding/bytes';
 import { BN254_R } from '../../../../../foundation/crypto/constants';
 
 const U32_MAX = 0xffff_ffff;
@@ -51,4 +51,13 @@ export function assertRoot(root: string, field: string): void {
     if (leHexToBigint(root) >= BN254_R) {
         throw new Error(`${field}: not a canonical field element`);
     }
+}
+
+/** 32 little-endian bytes of a non-zero element of the BN254 scalar field. */
+export function assertFieldKey(bytes: Uint8Array, field: string): void {
+    if (!(bytes instanceof Uint8Array) || bytes.length !== 32) {
+        throw new Error(`${field}: expected 32 bytes`);
+    }
+    const n = bytesToBigintLE(bytes);
+    if (n === 0n || n >= BN254_R) throw new Error(`${field}: not a non-zero field element`);
 }

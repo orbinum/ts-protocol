@@ -43,6 +43,7 @@ export * from './chain/rpc/index';
 export * from './chain/pallet/shielded-pool/index';
 export * from './chain/pallet/staking/index';
 export * from './chain/pallet/nomination-pools/index';
+export * from './chain/pallet/private-staking/index';
 export * from './chain/pallet/zk-verifier/index';
 export * from './chain/pallet/ismp/index';
 export { toTxResult, feePaidFrom, signAndSubmitTx } from './chain/tx';

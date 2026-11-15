@@ -6,6 +6,7 @@
  * disclosure/  the orbdisc: share/verify pair (prove a note's value, not spend)
  * spend/       forest geometry (tree math) — coin selection is private (wallet)
  * merkle/      Merkle paths a wallet builds itself, from block leaves and subtree roots
+ * bound/       the action a bound spend commits to, and its proof's memo_hash
  * types.ts     the shared vocabulary for public chain data
  * ```
  *
@@ -21,4 +22,5 @@ export * from './disclosure/index';
 export * from './spend/index';
 export * from './merkle/index';
 export * from './payment/index';
+export * from './bound/index';
 export type { MerkleTreeInfo, ScanCommitment, NoteFacts } from './types';

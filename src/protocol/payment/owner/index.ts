@@ -64,6 +64,17 @@ function sqrtModR(y2: bigint): bigint | null {
  */
 export function ownerPkPoint(ax: bigint): [bigint, bigint] | null {
     if (typeof ax !== 'bigint' || ax <= 0n || ax >= BN254_R) return null;
+    // A verifier asks for the same key on every request; the full-width
+    // subgroup check is the costly part, so the last answer is kept.
+    // ponytail: one entry, a small LRU if verifiers ever rotate many keys.
+    if (lastOwner?.ax !== ax) lastOwner = { ax, point: computeOwnerPkPoint(ax) };
+    const { point } = lastOwner;
+    return point && [point[0], point[1]];
+}
+
+let lastOwner: { ax: bigint; point: [bigint, bigint] | null } | undefined;
+
+function computeOwnerPkPoint(ax: bigint): [bigint, bigint] | null {
     const x2 = (ax * ax) % BN254_R;
     const num = (((1n - BJJ_A * x2) % BN254_R) + BN254_R) % BN254_R;
     const den = (((1n - BJJ_D * x2) % BN254_R) + BN254_R) % BN254_R;

@@ -14,8 +14,10 @@ import type {
     PrivateTransferParams,
     ShieldBatchParams,
     ClaimFeesParams,
+    BoundSpendParams,
 } from './types/index';
 import {
+    boundSpendCallArgs,
     claimFeesCallArgs,
     privateTransferCallArgs,
     shieldBatchCallArgs,
@@ -75,6 +77,22 @@ export class ShieldedPoolModule {
     async unshield(params: UnshieldParams, options?: SubmitOptions): Promise<TxResult> {
         const args = unshieldCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'unshield');
+        const tx = callUnsafeTx(entry, args);
+        return submitBareTx(tx, this.substrate, options?.onBroadcast);
+    }
+
+    /**
+     * Spends a note into a runtime action (runtime spec 22): private staking's
+     * `Enter` (an ORB note) or `Exit` (a share note).
+     * Extrinsic: shieldedPool.bound_spend(proof, merkleRoot, nullifier, assetId, amount, fee, changeCommitment, changeEncryptedMemo, circuitVersion, action)
+     *
+     * Always submitted UNSIGNED, like `unshield`. The proof is an unshield proof
+     * whose recipient is the action's executor and whose `memo_hash` is
+     * `boundSpendDigest(genesis, action, changeEncryptedMemo)`.
+     */
+    async boundSpend(params: BoundSpendParams, options?: SubmitOptions): Promise<TxResult> {
+        const args = boundSpendCallArgs(params);
+        const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'bound_spend');
         const tx = callUnsafeTx(entry, args);
         return submitBareTx(tx, this.substrate, options?.onBroadcast);
     }

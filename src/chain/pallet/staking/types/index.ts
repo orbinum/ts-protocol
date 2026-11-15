@@ -50,7 +50,12 @@ export interface StakingConfig {
     minCommission: number;
     /** `MaxCommission`, set by governance; `PERBILL` (100 %) when there is no ceiling. */
     maxCommission: number;
+    /** Eras a validator's unbonded stake stays locked (also anyone who validated within it). */
     bondingDuration: number;
+    /** Eras a nominator's or pool member's unbonded stake stays locked. */
+    nominatorUnbondDuration: number;
+    /** Whether nominators (and pool members) share their validators' slashes. */
+    nominatorsSlashable: boolean;
     historyDepth: number;
     sessionsPerEra: number;
 }

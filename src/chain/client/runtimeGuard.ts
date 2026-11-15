@@ -1,8 +1,8 @@
 import type { SubstrateClient } from '../substrate/SubstrateClient';
 import type { RawRuntimeVersion } from '../substrate/types/raw';
 
-/** Oldest runtime whose calls this SDK encodes: staking-async, nomination pools, text signatures with expiry. */
-export const MIN_SPEC_VERSION = 21;
+/** Oldest runtime whose calls this SDK encodes: private staking, bound spends and their signed texts. */
+export const MIN_SPEC_VERSION = 22;
 
 /** Throws unless the node runs `MIN_SPEC_VERSION` or later. */
 export async function assertSupportedRuntime(

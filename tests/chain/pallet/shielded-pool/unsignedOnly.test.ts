@@ -10,9 +10,10 @@ const call = (pallet: string, name: string, value: unknown = {}) => ({
 });
 
 describe('isOrWrapsUnsignedOnlyCall', () => {
-    it('matches private_transfer and unshield', () => {
+    it('matches private_transfer, unshield and bound_spend', () => {
         expect(isOrWrapsUnsignedOnlyCall(call('ShieldedPool', 'private_transfer'))).toBe(true);
         expect(isOrWrapsUnsignedOnlyCall(call('ShieldedPool', 'unshield'))).toBe(true);
+        expect(isOrWrapsUnsignedOnlyCall(call('ShieldedPool', 'bound_spend'))).toBe(true);
     });
 
     it('matches a spend nested in a batch or a proxy', () => {

@@ -8,8 +8,9 @@
 import { chacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { BN254_R } from '../../../foundation/crypto/constants';
-import { fastMulPoint } from '../../../foundation/crypto/bjj-fast';
-import { unpackUsableViewingKey } from '../../../foundation/crypto/bjj';
+import { packPoint } from '@zk-kit/baby-jubjub';
+import { fastMulBase, fastMulPoint, secretMulPoint } from '../../../foundation/crypto/bjj-fast';
+import { unpackSubgroupViewingKey } from '../../../foundation/crypto/bjj';
 import { bigintTo32Le, bytesToBigintLE } from '../../../foundation/encoding/bytes';
 import { bytesToBjjScalar, ENCRYPTED_MEMO_SIZE } from '../../memo/memoFormat';
 
@@ -45,9 +46,34 @@ export function memoSharedSecret(
     if (memo.length !== ENCRYPTED_MEMO_SIZE) return null;
     const ephPk = bytesToBigintLE(memo.subarray(NONCE_SIZE + CIPHERTEXT_SIZE));
     if (ephPk === 0n) return new Uint8Array(32);
-    const point = unpackUsableViewingKey(ephPk);
+    // Prime subgroup only: a mixed-order ephPk P + T gives [s]P + [s mod 8]T, and
+    // which of the 8 answers opens would tell its sender s mod 8.
+    const point = unpackSubgroupViewingKey(ephPk);
     if (!point) return null;
-    return bigintTo32Le(fastMulPoint(point, bytesToBjjScalar(viewingSecretKey))[0]);
+    return bigintTo32Le(secretMulPoint(point, bytesToBjjScalar(viewingSecretKey))[0]);
+}
+
+/**
+ * `[ephSk]·ivk` (x, 32 bytes LE) — the same secret the recipient reaches with
+ * `memoSharedSecret` — or null unless `ephemeralSecretKey` is the one the memo
+ * was sealed with: `[ephSk]·B` must be the memo's ephemeral key. That check is
+ * what makes a payer's proof verifiable: a secret that matched no ephemeral
+ * key would open a memo the recipient's wallet cannot.
+ *
+ * `viewingKey` must be a prime-subgroup point (from `decodePaymentAddress`).
+ */
+export function proofSharedSecret(
+    memo: Uint8Array,
+    ephemeralSecretKey: Uint8Array,
+    viewingKey: [bigint, bigint]
+): Uint8Array | null {
+    if (memo.length !== ENCRYPTED_MEMO_SIZE || ephemeralSecretKey.length !== 32) return null;
+    const scalar = bytesToBjjScalar(ephemeralSecretKey);
+    const ephPk = bigintTo32Le(packPoint(fastMulBase(scalar)) as bigint);
+    const sealedWith = memo.subarray(NONCE_SIZE + CIPHERTEXT_SIZE);
+    if (!ephPk.every((byte, i) => byte === sealedWith[i])) return null;
+    // The proof made this ephemeral public: the fast path leaks nothing.
+    return bigintTo32Le(fastMulPoint(viewingKey, scalar)[0]);
 }
 
 /** Whether the memo's first nonce byte is the view tag of `sharedSecret`. */

@@ -2,6 +2,7 @@ export {
     shieldCallArgs,
     shieldBatchCallArgs,
     unshieldCallArgs,
+    boundSpendCallArgs,
     privateTransferCallArgs,
     claimFeesCallArgs,
 } from './callArgs';
@@ -11,6 +12,7 @@ export {
     assertShieldParams,
     assertClaimFeesParams,
     assertUnshieldParams,
+    assertBoundSpendParams,
     assertPrivateTransferParams,
 } from './validation/index';
 export { assertNotSignedSpend, isOrWrapsUnsignedOnlyCall } from './unsignedOnly';

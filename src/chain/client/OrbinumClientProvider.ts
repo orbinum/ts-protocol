@@ -13,6 +13,7 @@
  * are implemented.
  */
 import { OrbinumClient } from './OrbinumClient';
+import type { MetadataCache } from '../substrate/metadataCache';
 import type { OrbinumClientConfig } from './types';
 
 // ─── Connection state ─────────────────────────────────────────────────────────
@@ -47,6 +48,11 @@ export interface ClientProviderConfig {
     evmRpcPeer?: string;
     /** Timeout for the initial WebSocket handshake in milliseconds. Default: `8_000`. */
     connectTimeoutMs?: number;
+    /**
+     * Where each connection keeps the runtime metadata, by code hash, so it is not
+     * downloaded (hundreds of KB) on every connect. See `MetadataCache`.
+     */
+    metadataCache?: MetadataCache;
     /** Interval between heartbeat probes in milliseconds. Default: `5_000`. */
     heartbeatIntervalMs?: number;
     /** Maximum time to wait for a heartbeat response before treating the node as unreachable. Default: `4_000`. */
@@ -92,6 +98,17 @@ const DEFAULT_STABLE_AFTER_MS = 10_000;
  * const client = await provider.getOrbinumClient();
  * ```
  */
+/**
+ * What a caller awaiting a connection gets when `reset()` overtook it: ask for the client
+ * again (a new provider, or this one once it reconnects) rather than reporting a failure.
+ */
+export class ConnectionSupersededError extends Error {
+    constructor() {
+        super('Connection attempt superseded by reset()');
+        this.name = 'ConnectionSupersededError';
+    }
+}
+
 export class OrbinumClientProvider {
     private readonly config: ClientProviderConfig;
     private readonly connectTimeoutMs: number;
@@ -106,6 +123,12 @@ export class OrbinumClientProvider {
     private _orbinumClient: OrbinumClient | null = null;
     /** In-flight attempt, so concurrent callers await one connect rather than racing several. */
     private _connectingPromise: Promise<OrbinumClient> | null = null;
+    /**
+     * Bumped by `reset()`: an attempt started before it is stale when it lands, and its
+     * client is destroyed instead of adopted — or a reset provider would come back
+     * `connected` with a client nobody asked for, beside the one a fresh caller opens.
+     */
+    private _generation = 0;
 
     // ─── Timers ─────────────────────────────────────────────────────────────
     // Typed as `ReturnType<typeof …>` rather than `number` or `NodeJS.Timeout`:
@@ -177,8 +200,9 @@ export class OrbinumClientProvider {
         this.startConnectAttempt();
     }
 
-    /** Returns to `'idle'`, dropping the client and any pending reconnect. */
+    /** Returns to `'idle'`, dropping the client, any pending reconnect and any attempt in flight. */
     reset(): void {
+        this._generation++;
         this.cancelReconnect();
         this.teardownClient();
         this._reconnectAttempt = 0;
@@ -189,11 +213,15 @@ export class OrbinumClientProvider {
 
     /** One attempt, with a scheduled retry if it fails. */
     private startConnectAttempt(): void {
-        this.setStatus('connecting');
-        this._connectingPromise = this.attemptConnect();
+        const generation = this._generation;
+        // The attempt is in place before listeners hear `connecting`: one that asks for
+        // the client right then awaits this attempt instead of finding none.
+        this._connectingPromise = this.attemptConnect(generation);
         this._connectingPromise.catch(() => {
-            if (this._status !== 'idle') this.scheduleReconnect();
+            if (generation === this._generation && this._status !== 'idle')
+                this.scheduleReconnect();
         });
+        this.setStatus('connecting');
     }
 
     /**
@@ -206,7 +234,7 @@ export class OrbinumClientProvider {
      * that arrived just as the timeout fired (`orphanClient`), and the one that
      * arrives afterwards (the `clientPromise` continuation).
      */
-    private async attemptConnect(): Promise<OrbinumClient> {
+    private async attemptConnect(generation: number): Promise<OrbinumClient> {
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         let orphanClient: OrbinumClient | null = null;
 
@@ -230,11 +258,14 @@ export class OrbinumClientProvider {
             };
             if (this.config.evmRpc) connectConfig.evmRpc = this.config.evmRpc;
             if (this.config.evmRpcPeer) connectConfig.evmRpcPeer = this.config.evmRpcPeer;
+            if (this.config.metadataCache) connectConfig.metadataCache = this.config.metadataCache;
             clientPromise = OrbinumClient.connect(connectConfig);
             const client = await Promise.race([clientPromise, timeoutPromise]);
             orphanClient = client;
 
             clearTimeout(timeoutId!);
+            // Reset while connecting: this attempt is no one's any more.
+            if (generation !== this._generation) throw new ConnectionSupersededError();
             orphanClient = null;
 
             this._orbinumClient = client;
@@ -266,6 +297,10 @@ export class OrbinumClientProvider {
                     }
                 );
             }
+            // A stale attempt (reset while it ran, timed out or not) leaves the provider
+            // as `reset()` or a newer attempt set it.
+            if (err instanceof ConnectionSupersededError || generation !== this._generation)
+                throw err;
             this._connectingPromise = null;
             this.setStatus(
                 'disconnected',
@@ -298,9 +333,11 @@ export class OrbinumClientProvider {
         this.stopHeartbeat();
         this._probeFailures = 0;
         this._heartbeatTimer = setInterval(async () => {
-            if (this._status !== 'connected' || !this._orbinumClient) return;
+            const client = this._orbinumClient;
+            if (this._status !== 'connected' || !client) return;
             const alive = await this.probe();
-            if (this._status !== 'connected') return;
+            // A probe of a client torn down meanwhile says nothing of the current one.
+            if (this._status !== 'connected' || this._orbinumClient !== client) return;
             if (alive) {
                 this._probeFailures = 0;
                 return;
@@ -332,16 +369,19 @@ export class OrbinumClientProvider {
      */
     private async probe(): Promise<boolean> {
         if (!this._orbinumClient) return false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
             await Promise.race([
                 this._orbinumClient.substrate.request('system_health', []),
-                new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('timeout')), this.heartbeatTimeoutMs)
-                ),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('timeout')), this.heartbeatTimeoutMs);
+                }),
             ]);
             return true;
         } catch {
             return false;
+        } finally {
+            clearTimeout(timer);
         }
     }
 

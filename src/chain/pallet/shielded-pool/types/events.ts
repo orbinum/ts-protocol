@@ -76,6 +76,37 @@ export type UnshieldedEvent = {
 };
 
 /**
+ * A bound spend paid its action's executor (native asset) or burned a
+ * pallet-backed asset, and ran the action (runtime spec 22).
+ * Rust variant: `BoundSpent { nullifier, asset_id, amount, executor, change_commitment, change_encrypted_memo, change_leaf_index }`
+ */
+export type BoundSpentEvent = {
+    /** 0x-prefixed 32-byte Poseidon nullifier (LE). */
+    nullifier: string;
+    assetId: number;
+    /** Amount handed to the action. */
+    amount: bigint;
+    /** SS58 AccountId of the action's executor (the proof's recipient). */
+    executor: string;
+    changeCommitment: string | null;
+    changeEncryptedMemo: string | null;
+    changeLeafIndex: number | null;
+};
+
+/**
+ * A note the chain computed and inserted itself, the output of a bound action.
+ * No memo: the wallet that built the action knows its key and blinding.
+ * Rust variant: `NoteMinted { commitment, asset_id, value, leaf_index }`
+ */
+export type NoteMintedEvent = {
+    /** 0x-prefixed 32-byte commitment (LE). */
+    commitment: string;
+    assetId: number;
+    value: bigint;
+    leafIndex: number;
+};
+
+/**
  * Emitted after every Merkle tree update (shield / transfer / unshield).
  * Rust variant: `MerkleRootUpdated { old_root, new_root, tree_size }`
  */
@@ -175,4 +206,6 @@ export type ShieldedPoolEvent =
     | { type: 'AssetVerified'; data: AssetVerifiedEvent }
     | { type: 'AssetUnverified'; data: AssetUnverifiedEvent }
     | { type: 'FeeCredited'; data: FeeCreditedEvent }
-    | { type: 'FeesClaimed'; data: FeesClaimedEvent };
+    | { type: 'FeesClaimed'; data: FeesClaimedEvent }
+    | { type: 'BoundSpent'; data: BoundSpentEvent }
+    | { type: 'NoteMinted'; data: NoteMintedEvent };

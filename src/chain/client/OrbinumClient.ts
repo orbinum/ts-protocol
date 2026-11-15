@@ -4,6 +4,7 @@ import { EvmExplorer } from '../evm/explorer/EvmExplorer';
 import { ShieldedPoolModule } from '../pallet/shielded-pool/ShieldedPoolModule';
 import { StakingModule } from '../pallet/staking/StakingModule';
 import { NominationPoolsModule } from '../pallet/nomination-pools/NominationPoolsModule';
+import { PrivateStakingModule } from '../pallet/private-staking/PrivateStakingModule';
 import { ChainModule } from '../rpc/ChainModule';
 import { PrivacyModule } from '../rpc/PrivacyModule';
 import { ZkVerifierModule } from '../pallet/zk-verifier/ZkVerifierModule';
@@ -65,6 +66,8 @@ export class OrbinumClient {
     readonly staking: StakingModule;
     /** Nomination pools: create, join, bond more, claim, unbond, nominate (`join`, `claimPayout`, …). */
     readonly pools: NominationPoolsModule;
+    /** Pools joined with shielded notes (runtime spec 22): reads, quotes, the root's switch. */
+    readonly privateStaking: PrivateStakingModule;
     /** Typed access to `privacy_*` custom RPC endpoints. */
     readonly privacy: PrivacyModule;
     /** Typed access to general chain state via `chain_*` custom RPC endpoints. */
@@ -104,6 +107,7 @@ export class OrbinumClient {
         this.shieldedPool = new ShieldedPoolModule(substrate);
         this.staking = new StakingModule(substrate);
         this.pools = new NominationPoolsModule(substrate);
+        this.privateStaking = new PrivateStakingModule(substrate);
         this.privacy = new PrivacyModule(substrate);
         this.chain = new ChainModule(substrate);
         this.zkVerifier = new ZkVerifierModule(substrate);
@@ -127,7 +131,9 @@ export class OrbinumClient {
     static async connect(config: OrbinumClientConfig): Promise<OrbinumClient> {
         const substrate = config.papi
             ? SubstrateClient.adopt(config.papi, config.substrateHttp)
-            : await SubstrateClient.connect(config.substrateWs, config.connectTimeoutMs ?? 15_000);
+            : await SubstrateClient.connect(config.substrateWs, config.connectTimeoutMs ?? 15_000, {
+                  metadataCache: config.metadataCache,
+              });
         try {
             await assertSupportedRuntime(substrate);
         } catch (e) {

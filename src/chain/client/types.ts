@@ -2,6 +2,7 @@
  * What a caller passes to open a connection, and what comes back from a spend.
  */
 import type { PolkadotClient } from 'polkadot-api';
+import type { MetadataCache } from '../substrate/metadataCache';
 
 /** Options that apply however the chain connection is obtained. */
 type OrbinumClientCommon = {
@@ -31,6 +32,8 @@ export type OrbinumClientConfig = OrbinumClientCommon &
               papi?: never;
               /** Timeout for the initial WebSocket handshake in milliseconds. Default: `15_000`. */
               connectTimeoutMs?: number;
+              /** Keeps the runtime metadata between connections (`MetadataCache`). */
+              metadataCache?: MetadataCache;
               substrateHttp?: never;
           }
         | {
@@ -38,6 +41,7 @@ export type OrbinumClientConfig = OrbinumClientCommon &
               /** An already-connected PAPI client, owned by the caller. */
               papi: PolkadotClient;
               connectTimeoutMs?: never;
+              metadataCache?: never;
               /** HTTP RPC endpoint enabling `batchRequest`. Optional. */
               substrateHttp?: string;
           }

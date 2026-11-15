@@ -1,9 +1,9 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "rootDir": ".",
-    "noUnusedLocals": false,
-    "noUnusedParameters": false
-  },
-  "include": ["src/**/*", "tests/**/*"]
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "rootDir": ".",
+        "noUnusedLocals": false,
+        "noUnusedParameters": false
+    },
+    "include": ["src/**/*", "tests/**/*", "wasm/**/*"]
 }

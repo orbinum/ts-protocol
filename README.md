@@ -37,8 +37,8 @@ chain/       OrbinumClient — Substrate + EVM, RPC, the shielded-pool pallet
 import { OrbinumClient } from '@orbinum/protocol';
 
 const client = await OrbinumClient.connect({
-  substrateWs: 'ws://localhost:9944',
-  evmRpc: 'http://localhost:9933',
+    substrateWs: 'ws://localhost:9944',
+    evmRpc: 'http://localhost:9933',
 });
 
 const stats = await client.privacy.getPoolStats();
@@ -50,15 +50,10 @@ client.destroy();
 ### Addresses
 
 ```ts
-import {
-  isSubstrateAddress,
-  isEvmAddress,
-  evmToSubstrate,
-  formatBalance,
-} from '@orbinum/protocol';
+import { isSubstrateAddress, isEvmAddress, evmToSubstrate, formatBalance } from '@orbinum/protocol';
 
-isEvmAddress('0xabc…');            // → boolean
-evmToSubstrate('0xabc…');          // → SS58 string
+isEvmAddress('0xabc…'); // → boolean
+evmToSubstrate('0xabc…'); // → SS58 string
 formatBalance(1_000_000_000_000n); // → human-readable
 ```
 
@@ -79,19 +74,88 @@ const envelope = sealPaymentSlip(recipientIvkPacked, fields);
 const wire = encodePaymentSlip(envelope); // → 'orbslip1:…' — hand this to the wallet
 ```
 
+### Verify a payment in your backend
+
+A payment made through Orbinum Hub returns a payment proof (`orbproof1:`). Your
+backend checks it with your **public** `orbpriv3:` address alone — no secret
+on the server — and confirms the note is in a **finalized** block:
+
+```ts
+import { OrbinumClient, verifyPaymentProof } from '@orbinum/protocol';
+
+const client = await OrbinumClient.connect({ substrateWs: 'wss://your-node' });
+const result = await verifyPaymentProof(order.paymentProof, {
+    address: 'orbpriv3:…', // yours, public
+    tree: client.privacy,
+    expected: { value: order.amount, assetId: 0n },
+});
+if (result.ok) markPaid(order, result.payment.commitmentHex); // one payment, one order
+```
+
+`ok: false` carries a `reason` (`invalid-proof`, `wrong-asset`, `wrong-amount`,
+`not-on-chain`, or `not-final` — landed, not finalized yet: retry in a few
+seconds); a node that cannot answer throws, so you retry instead of rejecting
+a paid order. `finality: 'best'` accepts the node's best block instead — faster,
+but a reorganisation can revert it; only for amounts you can afford to lose. `verifyPayment(slip, { key, … })` does the same from a
+payment slip with your viewing key (`orbview1:`), which also proves a sender
+named by address. A slip proves a note **to you** exists, not who made it:
+its fields are public on chain and anyone can seal them to your address. Settle
+orders from the public only with proofs; use slips for your own wallet,
+reconciliation, or a payer named by address.
+
+**Not on Node?** Each release ships `orbinum-verify.wasm`, a WASI command that
+runs the same offline check (`checkPaymentProof`) from any language: one JSON
+request on stdin, one JSON answer on stdout. Your backend then asks its node
+about the commitment itself.
+
+```sh
+echo '{"proof":"orbproof1:…","address":"orbpriv3:…","value":"1500","assetId":"0"}' \
+  | wasmtime orbinum-verify.wasm
+# {"ok":true,"payment":{"commitmentHex":"0x…","value":"1500","assetId":"0","sender":{"kind":"anonymous"}},"storageKey":"0x…"}
+```
+
+On `ok: true`, read `storageKey` in the finalized chain on your node:
+`state_getStorage(storageKey, chain_getFinalizedHead())`. Non-null means paid
+and final; null means not paid, or not final yet (retry in a few seconds); an
+RPC error means retry. `assetId` is required. The released module is the
+exact build CI tested, attested: `gh attestation verify orbinum-verify.wasm -R orbinum/ts-protocol`.
+Python (`wasmtime`), Go (`wazero`), Rust, PHP and Ruby all embed WASI modules.
+
+**Before you ship it:**
+
+- **One payment, one order.** Key orders on the verified `commitmentHex`, under
+  a unique constraint written with the order. Never on a `txHash`, a leaf index
+  or your `reference`: a payer can repeat or change those.
+- **Trust your node.** The chain check believes the node that answers it, and
+  names the commitment to it. Run one, or use one you trust; for large amounts,
+  ask two independent nodes and require both to agree.
+- **Wait for finality.** The default; `finality: 'best'` trades it for speed.
+- **A proof is a bearer token.** Whoever holds it can present it, and it
+  reveals that payment's amount and declared sender (nothing about the payer's
+  other notes). Accept it only inside the session that created the order it
+  pays, over TLS; do not log it. Store it with the order (not in logs): your
+  wallet finds payments by the memo on chain, and a payer who lands the note
+  with another memo leaves the proof as its only key.
+- **A viewing key reads everything** sent to its address and cannot be revoked.
+  Prefer proofs; if you hold one, keep it like an API secret. Its
+  multiplications run on a constant-time path (`secretMulPoint`), so callers
+  cannot time it out of your server — JS BigInt is not constant-time itself,
+  so do not expose verification to unauthenticated traffic at volume.
+
 ### Forest geometry
 
 ```ts
 import { isValidLeafIndex, treeIdOf, LEAVES_PER_TREE } from '@orbinum/protocol';
 
-isValidLeafIndex(leafIndex);   // a leaf index from an untrusted source is real?
-treeIdOf({ leafIndex });       // which forest tree that leaf lives in
+isValidLeafIndex(leafIndex); // a leaf index from an untrusted source is real?
+treeIdOf({ leafIndex }); // which forest tree that leaf lives in
 ```
 
 ## The custody boundary
 
-This SDK is deliberately incomplete: it cannot build, open, or spend a note,
-because doing so needs a spending key. Those operations — key derivation, the
+This SDK is deliberately incomplete: it cannot build or spend a note, because
+doing so needs a spending key. (It opens one only to verify a payment, with a
+viewing key or a payer's proof.) Those operations — key derivation, the
 vault, note construction, rescan, witness assembly and proving — live in the
 Orbinum wallet, not here. If you are writing a dapp or a script, you compose a
 payment (a slip, an address, an amount) with this SDK and route the spend
@@ -102,8 +166,8 @@ this SDK, and belongs on the wallet's side of that line.
 
 ## Entry points
 
-| Import         | What it is                                   |
-| -------------- | -------------------------------------------- |
+| Import              | What it is                                   |
+| ------------------- | -------------------------------------------- |
 | `@orbinum/protocol` | Everything above — the single public surface |
 
 ## Requirements

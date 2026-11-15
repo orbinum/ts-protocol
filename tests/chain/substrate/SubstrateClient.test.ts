@@ -116,7 +116,19 @@ describe('SubstrateClient.connect', () => {
 
     it('calls createClient with the provider', async () => {
         await makeClient();
-        expect(vi.mocked(createClient)).toHaveBeenCalledWith('mock-provider');
+        expect(vi.mocked(createClient)).toHaveBeenCalledWith('mock-provider', {});
+    });
+
+    it('hands createClient the metadata cache hooks when given one', async () => {
+        vi.mocked(createClient).mockClear();
+        const metadataCache = { get: async () => new Uint8Array([7]), set: () => {} };
+        await SubstrateClient.connect('ws://localhost:9944', 1_000, { metadataCache }).catch(
+            () => {}
+        );
+        const options = vi.mocked(createClient).mock.calls.at(-1)![1] as {
+            getMetadata: (h: string) => Promise<Uint8Array | null>;
+        };
+        expect(await options.getMetadata('0xaa')).toEqual(new Uint8Array([7]));
     });
 
     it('performs a system_name probe to verify connectivity', async () => {

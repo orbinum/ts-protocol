@@ -10,6 +10,7 @@
 import { blake2b } from '@noble/hashes/blake2.js';
 import { compactBn, u128, u32 } from '@polkadot-api/substrate-bindings';
 import { toHex } from '../../../foundation/encoding/hex';
+import { decodePoolProfile } from '../../pallet/nomination-pools/metadata';
 
 /** A call's pallet and function, as the runtime metadata names them. */
 export interface CallName {
@@ -117,14 +118,14 @@ function rewardsTo(bytes: Uint8Array): string | null {
 }
 
 /** A SCALE `Vec<AccountId32>` as one line each, or null past `MAX_LISTED_ACCOUNTS` or the bytes. */
-function accountLines(key: string, args: Uint8Array): Line[] | null {
+function accountLines(label: string, args: Uint8Array): Line[] | null {
     const count = compactBn.dec(args);
     const start = compactLength(args);
     if (count > BigInt(MAX_LISTED_ACCOUNTS) || start + Number(count) * ACCOUNT_ID > args.length) {
         return null;
     }
     return Array.from({ length: Number(count) }, (_, i): Line => [
-        key,
+        label,
         account(args, start + i * ACCOUNT_ID),
     ]);
 }
@@ -149,9 +150,9 @@ const CLAIM_PERMISSIONS = [
     'permissionless all',
 ];
 
-/** `lines` with `value` appended as `key`, or null when either is missing. */
-const withLine = (lines: Line[], key: string, value: string | null | undefined): Line[] | null =>
-    value == null ? null : [...lines, [key, value]];
+/** `lines` with `value` appended as `label`, or null when either is missing. */
+const withLine = (lines: Line[], label: string, value: string | null | undefined): Line[] | null =>
+    value == null ? null : [...lines, [label, value]];
 
 /**
  * What the staking calls bond, pay to and back: the compact amount and the
@@ -208,6 +209,28 @@ function perbill(bytes: Uint8Array): string | null {
 }
 
 /** Who may claim a pool's commission besides its root (`Option<CommissionClaimPermission>`). */
+/**
+ * `update_roles`' three `ConfigOp<AccountId>` (root, nominator, bouncer): `keep`, `remove`
+ * or the account; null unless they decode exactly.
+ */
+function roleLines(bytes: Uint8Array): Line[] | null {
+    const lines: Line[] = [];
+    let at = 0;
+    for (const role of ['root', 'nominator', 'bouncer']) {
+        const op = bytes[at];
+        if (op === 0 || op === 2) {
+            lines.push([role, op === 0 ? 'keep' : 'remove']);
+            at += 1;
+        } else if (op === 1 && at + 1 + ACCOUNT_ID <= bytes.length) {
+            lines.push([role, account(bytes, at + 1)]);
+            at += 1 + ACCOUNT_ID;
+        } else {
+            return null;
+        }
+    }
+    return at === bytes.length ? lines : null;
+}
+
 function commissionClaimPermission(bytes: Uint8Array): string | null {
     if (bytes.length === 1 && bytes[0] === 0) return 'root only';
     if (bytes.length === 2 && bytes[0] === 1 && bytes[1] === 0) return 'permissionless';
@@ -265,7 +288,8 @@ function commissionDetails(args: Uint8Array, fn: string): Line[] | null {
 /**
  * The nomination pool calls a text signature may authorise: the member calls (join, bond
  * more, claim, leave) and the operator calls that bond, nominate, set the pool's state or
- * manage its commission. Metadata and role changes are not text-signable. Pool ids are
+ * manage its commission, the root's role changes and metadata in the runtime's profile
+ * rule (`decodePoolProfile`). Pool ids are
  * `u32`; amounts after an account are compact, as staking's.
  */
 function poolsDetails(args: Uint8Array, fn: string): Line[] | null {
@@ -301,6 +325,30 @@ function poolsDetails(args: Uint8Array, fn: string): Line[] | null {
                 ['bouncer', account(args, at + 2 * ACCOUNT_ID)],
             ];
         }
+        case 'create_with_pool_id': {
+            // A dissolved pool's id taken again: `create`'s fields, then the id.
+            const at = compactLength(args);
+            return [
+                poolLine(args.slice(at + 3 * ACCOUNT_ID)),
+                ['amount', formatOrb(compactBn.dec(args))],
+                ['root', account(args, at)],
+                ['nominator', account(args, at + ACCOUNT_ID)],
+                ['bouncer', account(args, at + 2 * ACCOUNT_ID)],
+            ];
+        }
+        case 'set_metadata': {
+            // The pool's name and link, shown as written: the runtime takes only ASCII
+            // letters and digits for a name and a plain `https` link, and filters the rest.
+            const profile = decodePoolProfile(byteVec(args.slice(U32)));
+            if (!profile) return null;
+            const lines: Line[] = [poolLine(args), ['name', profile.name || 'none']];
+            if (profile.url) lines.push(['link', profile.url]);
+            return lines;
+        }
+        case 'adjust_pool_deposit':
+            return [poolLine(args)];
+        case 'apply_slash':
+            return [memberLine(args)];
         case 'nominate': {
             const validators = accountLines('validator', args.slice(U32));
             return validators && [poolLine(args), ...validators];
@@ -309,6 +357,10 @@ function poolsDetails(args: Uint8Array, fn: string): Line[] | null {
             return withLine([poolLine(args)], 'state', POOL_STATES[args[U32] ?? -1]);
         case 'set_claim_permission':
             return withLine([], 'permission', CLAIM_PERMISSIONS[args[0] ?? -1]);
+        case 'update_roles': {
+            const roles = roleLines(args.slice(U32));
+            return roles && [poolLine(args), ...roles];
+        }
         default:
             return args.length >= U32 ? commissionDetails(args, fn) : null;
     }
@@ -320,7 +372,8 @@ function poolsDetails(args: Uint8Array, fn: string): Line[] | null {
  * - transfers: an `AccountId32` then a compact balance (`transfer_all`: then `keep_alive`);
  * - ORB shields (amount, then the commitment's and the memo's fingerprints) and fee
  *   claims: a `u32` asset (0 only) then a `u128` amount;
- * - the staking and nomination pool calls above;
+ * - the staking and nomination pool calls above, and `PrivateStaking.set_private` (a pool
+ *   root opening its pool to private members): a `u32` pool then a `bool`;
  * - `Session.set_keys`: the Aura then the GRANDPA key;
  * - `System.remark`: its length and fingerprint;
  * - calls with nothing to show (`Session.purge_keys`, `ValidatorSet.deregister_validator`).
@@ -356,6 +409,11 @@ function details(call: Uint8Array, { pallet, call: fn }: CallName): Line[] | nul
                 ['length', `${remark.length} bytes`],
                 ['remark', textHashFingerprint(remark)],
             ];
+        }
+        case 'PrivateStaking.set_private': {
+            const enabled = args[U32];
+            if (args.length !== U32 + 1 || (enabled !== 0 && enabled !== 1)) return null;
+            return [poolLine(args), ['private members', enabled === 1 ? 'on' : 'off']];
         }
         case 'Session.purge_keys':
         case 'ValidatorSet.deregister_validator':

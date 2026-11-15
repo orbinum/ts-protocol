@@ -28,6 +28,7 @@ const landed = (): NoteTreeLookup & { calls: string[] } => {
     const calls: string[] = [];
     return {
         calls,
+        getFinalizedLeafIndex: async (hex) => (calls.push(hex), 1),
         getMerkleProofByCommitment: async (hex) => (calls.push(hex), { leafIndex: 1 }),
     };
 };
@@ -65,6 +66,7 @@ describe('Threat: anyone with the address seals a slip for a payment never made'
 
     it('a slip the chain does not hold is not a payment', async () => {
         const tree: NoteTreeLookup = {
+            getFinalizedLeafIndex: async () => null,
             getMerkleProofByCommitment: async () => {
                 throw new Error('RPC error: commitment not found');
             },
@@ -216,6 +218,7 @@ describe('Threat: an unreliable node decides an order', () => {
             'Internal error',
         ]) {
             const tree: NoteTreeLookup = {
+                getFinalizedLeafIndex: async () => null,
                 getMerkleProofByCommitment: async () => {
                     throw new Error(message);
                 },
@@ -223,7 +226,7 @@ describe('Threat: an unreliable node decides an order', () => {
             await expect(
                 verifyPayment(vector('anonymous').slip, { key: KEY, tree, expected }),
                 message
-            ).rejects.toThrow();
+            ).rejects.toThrow(message);
         }
     });
 
@@ -235,11 +238,14 @@ describe('Threat: an unreliable node decides an order', () => {
             { leafIndex: Number.NaN },
             null,
         ]) {
-            const tree = { getMerkleProofByCommitment: vi.fn(async () => answer as never) };
+            const tree = {
+                getFinalizedLeafIndex: async () => null,
+                getMerkleProofByCommitment: vi.fn(async () => answer as never),
+            };
             await expect(
                 verifyPayment(vector('anonymous').slip, { key: KEY, tree, expected }),
                 JSON.stringify(answer)
-            ).rejects.toThrow();
+            ).rejects.toThrow(/invalid leaf index/);
         }
     });
 });

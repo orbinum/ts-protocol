@@ -17,7 +17,7 @@
  * Poseidon(2) over BN254 field elements, `zero[0] = 0`,
  * `zero[l] = H(zero[l-1], zero[l-1])`.
  */
-import { poseidon2 } from 'poseidon-lite';
+import { poseidon2 } from 'poseidon-lite/poseidon2';
 import { BN254_R } from '../../foundation/crypto/constants';
 import { LEAVES_PER_TREE, isValidLeafIndex } from '../spend/treeIndex';
 

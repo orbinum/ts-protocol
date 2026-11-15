@@ -43,9 +43,9 @@ import { randomBytes } from '@noble/ciphers/utils.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { packPoint } from '@zk-kit/baby-jubjub';
-import { fastMulBase, fastMulPoint } from '../../foundation/crypto/bjj-fast';
+import { fastMulBase, secretMulPoint } from '../../foundation/crypto/bjj-fast';
 import { bigintTo32Le, bytesToBigintLE } from '../../foundation/encoding/bytes';
-import { unpackSubgroupViewingKey, unpackUsableViewingKey } from '../../foundation/crypto/bjj';
+import { unpackSubgroupViewingKey } from '../../foundation/crypto/bjj';
 import { toHex, isHexOfLength, fromHex } from '../../foundation/encoding/hex';
 import { base64UrlEncode, base64UrlDecode } from '../../foundation/encoding/base64url';
 import { bytesToBjjScalar, ENCRYPTED_MEMO_SIZE } from './memoFormat';
@@ -152,7 +152,7 @@ export function sealPaymentSlip(
     const ephSkScalar = bytesToBjjScalar(randomBytes(32));
     const ephPkPacked = bigintTo32Le(packPoint(fastMulBase(ephSkScalar)) as bigint);
 
-    const sharedPoint = fastMulPoint(ivkPoint, ephSkScalar);
+    const sharedPoint = secretMulPoint(ivkPoint, ephSkScalar);
     const sharedSecret = bigintTo32Le(sharedPoint[0]);
 
     const slipKey = deriveSlipKey(sharedSecret);
@@ -184,21 +184,23 @@ export function openPaymentSlip(
     recipientIvsk: Uint8Array,
     envelope: Uint8Array
 ): PaymentSlipFields | null {
+    if (!(envelope instanceof Uint8Array) || !(recipientIvsk instanceof Uint8Array)) return null;
     // Both bounds are checked BEFORE any decryption or parsing: the work an
     // oversized envelope costs lands before a single field is ever inspected.
     if (envelope.length < EPH_PK_SIZE + NONCE_SUFFIX_SIZE + 16) return null;
     if (envelope.length > MAX_SLIP_ENVELOPE_SIZE) return null;
     try {
         const ephPkPacked = envelope.subarray(0, EPH_PK_SIZE);
-        // Same gate `sealPaymentSlip` applies on the way out — a slip arrives
-        // from whoever hands it over, and a cofactor-8 ephPk would collapse the
-        // shared secret to one of eight enumerable values.
-        const ephPkPoint = unpackUsableViewingKey(bytesToBigintLE(ephPkPacked));
+        // Prime subgroup only — a slip arrives from whoever hands it over: a
+        // small-order ephPk collapses the shared secret to one of eight values,
+        // and a mixed-order one (P + T) would leak ivsk mod 8 through which of
+        // the eight opens.
+        const ephPkPoint = unpackSubgroupViewingKey(bytesToBigintLE(ephPkPacked));
         if (!ephPkPoint) return null;
 
         // sharedSecret = [ivsk]·ephPk — the same value the sender computed.
         const ivskScalar = bytesToBjjScalar(recipientIvsk);
-        const sharedSecret = bigintTo32Le(fastMulPoint(ephPkPoint, ivskScalar)[0]);
+        const sharedSecret = bigintTo32Le(secretMulPoint(ephPkPoint, ivskScalar)[0]);
 
         const slipKey = deriveSlipKey(sharedSecret);
         const suffix = envelope.subarray(EPH_PK_SIZE, EPH_PK_SIZE + NONCE_SUFFIX_SIZE);
@@ -272,6 +274,7 @@ export function encodePaymentSlip(envelope: Uint8Array): string {
  * scheme, a bad checksum (mistyped/truncated), or malformed payload returns null.
  */
 export function decodePaymentSlip(text: string): Uint8Array | null {
+    if (typeof text !== 'string') return null;
     // Refused before the checksum hashes it: a pasted string can be any size.
     if (text.length > MAX_SLIP_TEXT_LENGTH) return null;
     if (!text.startsWith(PAYMENT_SLIP_SCHEME)) return null;

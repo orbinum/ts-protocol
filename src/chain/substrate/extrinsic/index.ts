@@ -234,6 +234,20 @@ export function mapExtrinsicArgs(
                 circuit_version: get(9, 'circuit_version'),
             };
         }
+        if (m_norm === 'boundspend') {
+            return {
+                proof: get(0, 'proof'),
+                merkle_root: get(1, 'merkle_root'),
+                nullifier: get(2, 'nullifier'),
+                asset_id: get(3, 'asset_id'),
+                amount: get(4, 'amount'),
+                fee: get(5, 'fee'),
+                change_commitment: get(6, 'change_commitment'),
+                change_encrypted_memo: get(7, 'change_encrypted_memo'),
+                circuit_version: get(8, 'circuit_version'),
+                action: get(9, 'action'),
+            };
+        }
         if (m_norm === 'claimfees') {
             return { asset_id: get(0, 'asset_id'), amount: get(1, 'amount') };
         }
@@ -427,6 +441,29 @@ export function mapZkEventData(
             change_commitment: get(3, 'change_commitment'),
             change_memo: get(4, 'change_encrypted_memo'),
             change_index: get(5, 'change_leaf_index'),
+        };
+    }
+
+    // A bound spend pays its action's executor; the action's output comes later as
+    // `NoteMinted`, a leaf the chain computed itself.
+    if (m_norm === 'boundspent') {
+        return {
+            nullifier: get(0, 'nullifier'),
+            asset_id: get(1, 'asset_id'),
+            amount: formatAmount(get(2, 'amount')),
+            executor: get(3, 'executor'),
+            change_commitment: get(4, 'change_commitment'),
+            change_memo: get(5, 'change_encrypted_memo'),
+            change_index: get(6, 'change_leaf_index'),
+        };
+    }
+
+    if (m_norm === 'noteminted') {
+        return {
+            commitment: get(0, 'commitment'),
+            asset_id: get(1, 'asset_id'),
+            value: get(2, 'value'),
+            index: get(3, 'leaf_index'),
         };
     }
 

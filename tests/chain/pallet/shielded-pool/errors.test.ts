@@ -178,6 +178,14 @@ describe('classifyChainError', () => {
     });
 });
 
+describe('bound spends (runtime spec 22)', () => {
+    it('classifies a refused action and a pallet-backed asset', () => {
+        expect(palletErrorKind('InvalidBoundAction')).toBe('shape');
+        expect(palletErrorKind('AssetManagedByPallet')).toBe('asset');
+        expect(classifyChainError('Invalid Transaction: Custom error: 14')).toBe('shape');
+    });
+});
+
 describe('KNOWN_PALLET_ERRORS', () => {
     it('lists every classified name, so a host can build a copy table', () => {
         expect(KNOWN_PALLET_ERRORS).toContain('MerkleTreeFull');
@@ -291,6 +299,8 @@ describe('KNOWN_PALLET_ERRORS', () => {
             'EmptyBatch',
             'AssetIdAlreadyExists',
             'AssetNotSupported',
+            'AssetManagedByPallet',
+            'InvalidBoundAction',
         ];
         const other = [
             'NullifierAlreadySpent',

@@ -1,5 +1,5 @@
 /** The note commitment, as note.circom's NoteCommitment computes it. */
-import { poseidon4 } from 'poseidon-lite';
+import { poseidon4 } from 'poseidon-lite/poseidon4';
 
 /** `Poseidon4(value, assetId, ownerPk, blinding)`. */
 export function noteCommitment(

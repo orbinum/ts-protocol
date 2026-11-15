@@ -11,18 +11,11 @@
  * address can seal one around a note never submitted. `verifyPayment` adds the
  * amount and the chain.
  */
-import { bytesToBigintLE } from '../../../foundation/encoding/bytes';
-import { fromHex } from '../../../foundation/encoding/hex';
+import { fromHex, toHex } from '../../../foundation/encoding/hex';
 import { decodePaymentSlip, openPaymentSlip } from '../../memo/PaymentSlip';
-import { noteCommitment } from '../commitment';
-import { memoSharedSecret, memoViewTagMatches, openMemo } from '../memo';
-import { isOwnedBy } from '../owner';
-import {
-    decodeSenderClaim,
-    privacyAddressOf,
-    senderAddressClaim,
-    type PaymentSender,
-} from '../sender';
+import { memoSharedSecret } from '../memo';
+import { openNote } from '../note';
+import type { PaymentSender } from '../sender';
 import { usableViewingKey, type PaymentViewingKey } from '../viewingKey';
 
 /** Longer than any `orbslip1:` string; refused before decoding. */
@@ -35,9 +28,13 @@ export interface ReceivedPayment {
     /** Amount, in the asset's smallest unit. */
     value: bigint;
     assetId: bigint;
-    /** Leaf index the slip states; informational, not checked. */
+    /** Leaf index the slip states; informational, NOT checked. */
     leafIndex?: number;
-    /** Transaction hash the slip states; informational, not checked. */
+    /**
+     * Transaction hash the slip states; informational, NOT checked — never key
+     * an order on it (`verifyPayment` leaves it out). A payment is its
+     * `commitmentHex`.
+     */
     txHash?: string;
     sender: PaymentSender;
 }
@@ -69,36 +66,26 @@ function read(
     if (!fields) return null;
 
     const memo = fromHex(fields.encryptedMemo);
-    const commitmentBytes = fromHex(fields.commitmentHex);
     const sharedSecret = memoSharedSecret(memo, key.viewingSecretKey);
-    if (!sharedSecret || !memoViewTagMatches(memo, sharedSecret)) return null;
-    const plaintext = openMemo(memo, commitmentBytes, sharedSecret);
-    if (!plaintext) return null;
-    if (!isOwnedBy(plaintext.ownerPk, key.ownerPk, ownerPoint, sharedSecret)) return null;
-
-    const onChain = bytesToBigintLE(commitmentBytes);
-    const { value, assetId, ownerPk } = plaintext;
-    let sender: PaymentSender;
-    if (noteCommitment(value, assetId, ownerPk, plaintext.blinding) === onChain) {
-        const claim = decodeSenderClaim(plaintext.sourcePk);
-        // An address claim that did not shape the commitment is unproven: anonymous.
-        sender = claim.kind === 'pseudonym' ? claim : { kind: 'anonymous' };
-    } else {
-        const claim = senderAddressClaim(plaintext, sharedSecret, key.viewingSecretKey);
-        if (!claim || noteCommitment(value, assetId, ownerPk, claim.blinding) !== onChain)
-            return null;
-        sender = {
-            kind: 'address',
-            address: privacyAddressOf(claim.ownerPk, claim.viewingPublicKey),
-        };
-    }
+    if (!sharedSecret) return null;
+    const note = openNote({
+        memo,
+        commitment: fromHex(fields.commitmentHex),
+        sharedSecret,
+        ownerPk: key.ownerPk,
+        ownerPoint,
+        viewingSecretKey: key.viewingSecretKey,
+    });
+    if (!note) return null;
 
     return {
-        commitmentHex: fields.commitmentHex,
-        value,
-        assetId,
+        // Canonical lowercase: the slip may spell the same bytes in any case, and
+        // a payment's identity must be ONE string under the order's unique key.
+        commitmentHex: toHex(fromHex(fields.commitmentHex)),
+        value: note.value,
+        assetId: note.assetId,
         ...(fields.leafIndex !== undefined ? { leafIndex: fields.leafIndex } : {}),
         ...(fields.txHash !== undefined ? { txHash: fields.txHash } : {}),
-        sender,
+        sender: note.sender,
     };
 }

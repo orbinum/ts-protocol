@@ -95,6 +95,8 @@ const ERROR_KINDS: Readonly<Record<string, PalletErrorKind>> = {
     AssetNotVerified: 'asset',
     AssetNotSupported: 'asset',
     AssetIdAlreadyExists: 'asset',
+    // a pallet-backed asset (private staking shares) moves only by its own pallet
+    AssetManagedByPallet: 'asset',
 
     // Request shape
     InvalidMemoSize: 'shape',
@@ -103,6 +105,8 @@ const ERROR_KINDS: Readonly<Record<string, PalletErrorKind>> = {
     InvalidRecipient: 'shape',
     EmptyBatch: 'shape',
     FeeRecipientUnavailable: 'shape',
+    // a bound spend's action refused by the pallet that runs it
+    InvalidBoundAction: 'shape',
 
     // Capacity
     MerkleTreeFull: 'capacity',
@@ -147,6 +151,29 @@ export function classifyChainError(rawMessage: string): PalletErrorKind {
  * that would fail is refused here, before any block, so these replace the
  * pallet error names for that path.
  */
+export const POOL_REJECTIONS = {
+    1: 'UnknownRoot',
+    2: 'AllInputsDummy',
+    3: 'InsufficientPoolBalance',
+    4: 'AmountOverflow',
+    10: 'UnsupportedCircuitVersion',
+    11: 'InvalidMemo',
+    12: 'InvalidProof',
+    13: 'InvalidSpend',
+    /** A bound spend's action refused by the pallet that runs it (pool closed, a minimum, a full queue). */
+    14: 'InvalidAction',
+} as const;
+
+export type PoolRejection = (typeof POOL_REJECTIONS)[keyof typeof POOL_REJECTIONS];
+
+/** The named pool-admission rejection inside a raw error, or null. */
+export function poolRejectionName(raw: string): PoolRejection | null {
+    const code = extractPoolRejection(raw);
+    return code === null
+        ? null
+        : ((POOL_REJECTIONS as Record<number, PoolRejection>)[code] ?? null);
+}
+
 const POOL_REJECTION_KINDS: Readonly<Record<number, PalletErrorKind>> = {
     1: 'stale-proof', // UNKNOWN_ROOT: prove against a fresh root
     2: 'shape', // ALL_INPUTS_DUMMY
@@ -156,6 +183,7 @@ const POOL_REJECTION_KINDS: Readonly<Record<number, PalletErrorKind>> = {
     11: 'shape', // INVALID_MEMO
     12: 'proof', // INVALID_PROOF
     13: 'shape', // INVALID_SPEND: a check the dispatchable would fail
+    14: 'shape', // INVALID_ACTION: a bound spend's action refused (pool closed, below a minimum, …)
 };
 
 /** The pool-admission code inside a raw error (`Custom error: N`), or null. */

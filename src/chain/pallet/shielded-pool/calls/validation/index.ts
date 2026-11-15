@@ -8,5 +8,10 @@
  */
 export { assertU32 } from './primitives';
 export { assertShieldParams } from './shield';
-export { assertMerkleRoots, assertUnshieldParams, assertPrivateTransferParams } from './spends';
+export {
+    assertMerkleRoots,
+    assertUnshieldParams,
+    assertBoundSpendParams,
+    assertPrivateTransferParams,
+} from './spends';
 export { assertClaimFeesParams } from './fees';

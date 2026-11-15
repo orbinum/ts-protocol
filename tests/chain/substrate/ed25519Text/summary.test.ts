@@ -239,11 +239,34 @@ describe('summaryLines', () => {
         expect(formatPercent(1_000_000_000)).toBe('100%');
     });
 
+    it('shows each role change of update_roles: keep, remove or the account', () => {
+        const roles = pools(0x0c, u32.enc(7), Uint8Array.of(1), BOB, Uint8Array.of(0, 2));
+        expect(isTextSignable(roles, nameOf(roles))).toBe(true);
+        expect(summary(roles)).toBe(
+            `NominationPools.update_roles\npool: 7\nroot: ${toHex(BOB)}\nnominator: keep\nbouncer: remove${NEVER}`
+        );
+    });
+
+    it('shows a pool name and link as written, and refuses any other metadata', () => {
+        const set = (text: string) => {
+            const name = new TextEncoder().encode(text);
+            return pools(0x0a, u32.enc(7), compactBn.enc(BigInt(name.length)), name);
+        };
+        const named = set('Orbinum Pool\nhttps://x.com/orbinum');
+        expect(isTextSignable(named, nameOf(named))).toBe(true);
+        expect(summary(named)).toContain(
+            '\npool: 7\nname: Orbinum Pool\nlink: https://x.com/orbinum\n'
+        );
+        for (const refused of ['Orbinum 🌊', 'Orbinum\nroot: someone', 'A\nhttp://x.com']) {
+            const call = set(refused);
+            expect(isTextSignable(call, nameOf(call))).toBe(false);
+        }
+    });
+
     it('refuses pool calls it cannot show in full', () => {
-        const metadata = pools(0x0a, u32.enc(7), compactBn.enc(2n), Uint8Array.of(1, 2));
-        expect(isTextSignable(metadata, nameOf(metadata))).toBe(false);
-        const roles = pools(0x0c, u32.enc(7), Uint8Array.of(1), BOB, Uint8Array.of(0, 0));
-        expect(isTextSignable(roles, nameOf(roles))).toBe(false);
+        // A role change that does not decode exactly: an account cut short.
+        const cut = pools(0x0c, u32.enc(7), Uint8Array.of(1), BOB.slice(1), Uint8Array.of(0, 0));
+        expect(isTextSignable(cut, nameOf(cut))).toBe(false);
         const tooMany = pools(0x08, u32.enc(7), compactBn.enc(17n), new Uint8Array(17 * 32));
         expect(isTextSignable(tooMany, nameOf(tooMany))).toBe(false);
     });
@@ -308,7 +331,7 @@ describe('the runtime vectors', () => {
                 'balances_burn',
                 'staking_nominate_too_many',
                 'claim_fees_other_asset',
-                'pools_set_metadata',
+                'pools_set_metadata_emoji',
             ])
         );
     });

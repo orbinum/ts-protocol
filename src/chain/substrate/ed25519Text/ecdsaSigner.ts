@@ -92,8 +92,9 @@ export function getEcdsaTextSigner(evmAddress: string, sign: PersonalSign): Ecds
     if (!EVM_ADDRESS.test(evmAddress)) throw new Error(`Not a 0x EVM address: ${evmAddress}`);
     const address = evmToSubstrate(evmAddress);
     if (!address) throw new Error(`Not an EVM address: ${evmAddress}`);
-    // `signBytes` (pjs `signRaw`) has the wallet sign arbitrary bytes with `personal_sign`; no
-    // runtime path accepts that as a transaction, so it is not recovered here.
+    // `signBytes` (pjs `signRaw`) has the wallet sign arbitrary bytes with `personal_sign`. It
+    // is the raw primitive: bytes that are a transaction text sign that transaction, so only
+    // hand it bytes the person has seen.
     const signRaw: SignRaw = async ({ data }) => ({ id: 0, signature: await sign(fromHex(data)) });
     const creator = (...args: Parameters<EcdsaTextSigner>) =>
         getTxCreatorFromPjs(

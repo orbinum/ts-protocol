@@ -12,8 +12,10 @@ import type {
     CreatePoolParams,
     NewPoolCommission,
     PoolBondExtra,
+    PoolRolesUpdate,
     PoolState,
 } from '../types/index';
+import { encodePoolMetadata, type PoolProfile } from '../metadata';
 
 const POOL_STATES: readonly PoolState[] = ['Open', 'Blocked', 'Destroying'];
 const CLAIM_PERMISSIONS: readonly ClaimPermission[] = [
@@ -97,6 +99,19 @@ export function createCallArgs({ amount, root, nominator, bouncer }: CreatePoolP
     };
 }
 
+/** `create_with_pool_id`: a pool under an id freed by a destroyed pool (at most `LastPoolId`). */
+export function createWithPoolIdCallArgs(params: CreatePoolParams, id: number) {
+    return { ...createCallArgs(params), pool_id: poolId(id, 'createWithPoolId') };
+}
+
+export function adjustPoolDepositCallArgs(id: number) {
+    return { pool_id: poolId(id, 'adjustPoolDeposit') };
+}
+
+export function applySlashCallArgs(member: string) {
+    return { member_account: toSs58(member, 'applySlash.member') };
+}
+
 export function nominateCallArgs(id: number, validators: string[]) {
     return {
         pool_id: poolId(id, 'nominate'),
@@ -109,6 +124,31 @@ export function setStateCallArgs(id: number, state: PoolState) {
         pool_id: poolId(id, 'setState'),
         state: unitVariant(state, POOL_STATES, 'setState.state'),
     };
+}
+
+/** `ConfigOp<AccountId>` as PAPI encodes it: keep (`undefined`), remove (`null`) or set. */
+function roleOp(change: string | null | undefined, where: string) {
+    if (change === undefined) return { type: 'Noop', value: undefined };
+    if (change === null) return { type: 'Remove', value: undefined };
+    return { type: 'Set', value: toSs58(change, where) };
+}
+
+export function updateRolesCallArgs(id: number, roles: PoolRolesUpdate) {
+    const { root, nominator, bouncer } = roles;
+    if (root === undefined && nominator === undefined && bouncer === undefined) {
+        throw new Error('updateRoles: no role to change');
+    }
+    return {
+        pool_id: poolId(id, 'updateRoles'),
+        new_root: roleOp(root, 'updateRoles.root'),
+        new_nominator: roleOp(nominator, 'updateRoles.nominator'),
+        new_bouncer: roleOp(bouncer, 'updateRoles.bouncer'),
+    };
+}
+
+/** The pool's profile as its metadata bytes; see `../metadata`. */
+export function setMetadataCallArgs(id: number, profile: PoolProfile) {
+    return { pool_id: poolId(id, 'setMetadata'), metadata: encodePoolMetadata(profile) };
 }
 
 export function chillCallArgs(id: number) {

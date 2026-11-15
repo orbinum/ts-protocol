@@ -8,8 +8,10 @@
  * — the module submits spends unsigned, and a host has no other way to.
  */
 import { MemoFormat } from '../../../../protocol/memo/index';
+import { boundActionArg } from '../../../../protocol/bound/index';
 import { accountIdHexToSs58 } from '../../../../foundation/address';
 import type {
+    BoundSpendParams,
     ClaimFeesParams,
     PrivateTransferParams,
     ShieldBatchParams,
@@ -17,6 +19,7 @@ import type {
     UnshieldParams,
 } from '../types/params';
 import {
+    assertBoundSpendParams,
     assertClaimFeesParams,
     assertPrivateTransferParams,
     assertShieldParams,
@@ -75,6 +78,28 @@ export function unshieldCallArgs(params: UnshieldParams) {
         change_commitment: params.changeCommitment ?? '0x' + '00'.repeat(32),
         change_encrypted_memo: changeMemo && changeMemo.length > 0 ? changeMemo : new Uint8Array(0),
         circuit_version: params.circuitVersion,
+    };
+}
+
+/**
+ * `ShieldedPool.bound_spend`'s arguments, by name. No recipient: the runtime pays the
+ * action's executor, which the proof must name.
+ */
+export function boundSpendCallArgs(params: BoundSpendParams) {
+    assertBoundSpendParams(params, 'boundSpend');
+    const changeMemo = params.changeEncryptedMemo;
+    if (changeMemo && changeMemo.length > 0) MemoFormat.validate(changeMemo, 'changeEncryptedMemo');
+    return {
+        proof: params.proof,
+        merkle_root: params.merkleRoot,
+        nullifier: params.nullifier,
+        asset_id: params.assetId,
+        amount: params.amount,
+        fee: params.fee ?? 0n,
+        change_commitment: params.changeCommitment ?? '0x' + '00'.repeat(32),
+        change_encrypted_memo: changeMemo && changeMemo.length > 0 ? changeMemo : new Uint8Array(0),
+        circuit_version: params.circuitVersion,
+        action: boundActionArg(params.action),
     };
 }
 

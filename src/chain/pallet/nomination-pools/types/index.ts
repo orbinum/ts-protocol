@@ -31,6 +31,13 @@ export interface CreatePoolParams {
     bouncer: string;
 }
 
+/**
+ * `nominationPools.updateRoles`, per role: an address to set, `null` to remove the role,
+ * or left out to keep it. Without a root, no one can change the pool's roles or
+ * commission again.
+ */
+export type PoolRolesUpdate = Partial<Record<'root' | 'nominator' | 'bouncer', string | null>>;
+
 /** Chain-wide pool parameters and counters. Limits are null when uncapped. */
 export interface PoolsConfig {
     minJoinBond: bigint;
@@ -113,8 +120,12 @@ export interface PoolSummary {
     memberCount: number;
     roles: PoolRoles;
     commission: PoolCommission;
-    /** The name the root set (`set_metadata`), as UTF-8; empty when none. */
+    /** The pool's metadata (`set_metadata`) as UTF-8; empty when none. */
     metadata: string;
+    /** The name in `metadata`, without unsafe characters; empty when none. */
+    name: string;
+    /** The one `https` link in `metadata`, or null; set by the pool's operators. */
+    url: string | null;
 }
 
 /** A pool read in full: its accounts, balance, nominations and reward totals. */
@@ -167,3 +178,5 @@ export interface PoolMember {
     pendingRewards: bigint;
     claimPermission: ClaimPermission;
 }
+
+export type { PoolProfile, PoolProfileRefusal } from '../metadata';

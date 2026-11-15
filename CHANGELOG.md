@@ -7,6 +7,185 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-15
+
+### Added
+
+- **`metadataCache`** on `OrbinumClientProvider`, `OrbinumClient.connect` and
+  `SubstrateClient.connect`: a `MetadataCache` (`get`/`set` by the runtime's code hash)
+  keeps the runtime metadata — hundreds of KB — between connections, so a reconnect or a
+  page load downloads it only when the runtime changed. A failing cache reads as a miss
+  and never fails the connection (`guardedMetadataCache`).
+- **Private staking (runtime spec 22).** Nomination pools joined with shielded notes:
+    - `client.privateStaking` (`PrivateStakingModule`): `pool(id)`, `pools()`,
+      `poolOfAsset(assetId)`, `minEntry()`, `quote(id)`, `exitUnbondingEras()`, `memberAddress(id)`,
+      `entryRefusal(id, amount)` (also a pool slashed past `MaxPointsToBalance`, the
+      member limits and a full entry queue for the era), `exitRefusal(id, shares, fee, minValue)` and
+      `setPrivate(id, enabled, signer)` — the root opens or closes its pool to private
+      entries (exits never close). Refused before signing when the signer is not the
+      root, the pool is destroying or its private side wound down (opening) or was never
+      opened (closing).
+    - `privateExitRefusal(state, shares, fee, minValue)` and `privateExitValue(quote,
+      shares, fee)`: what an exit is paid and why the chain would refuse it, as
+      `check_redeem` decides — the join minimum (unless the rest is dust), a nominating
+      pool's nominator minimum, room for an unbonding chunk and `min_value` against
+      the payout. An exit leaving only its own fee's shares takes everything but what
+      the fee is worth.
+    - Share pricing as the runtime rounds it, never above pro rata (a price below one,
+      after a slash): `privateShareValue(quote, shares)`,
+      `privateSharesFor(quote, value)` (an estimate: an entry is priced once its era
+      compounds) and `privateMinFeeShares(quote, minSpendFee)`, the fee floor of a spend
+      of the pool's share asset.
+    - `privateMemberAccountId(id)` / `privateMemberAddress(id)`: the pool's private
+      member, the account a bound spend into it pays; `privateMemberPoolId(account)`
+      the other way.
+- **`poolAccounts(id)` and `poolOfBondedAccount(account)`** — a pool's bonded and reward
+  accounts as the pools pallet derives them (`POOLS_PALLET_ID`, or the
+  `NominationPools.PalletId` constant).
+- **`StakingConfig.nominatorUnbondDuration` and `nominatorsSlashable`** — eras a
+  nominator's or pool member's unbonded stake stays locked (the fast unbond while
+  nominators are not slashable), and whether they share slashes; `bondingDuration` is a
+  validator's.
+- **`isPunycodeUrl(url)`** — whether a pool link's host is internationalized (`xn--`), so a
+  client can warn that it may imitate another site's name.
+- **`NominationPoolsModule.createWithPoolId`, `adjustPoolDeposit` and `applySlash`, and
+  `StakingModule.payoutStakersByPage`** — the remaining text-signable pool and staking
+  calls. `createWithPoolId` is refused before signing for an id in use or never issued.
+- **`POOL_REJECTIONS` and `poolRejectionName(raw)`** — the unsigned spend admission codes
+  by name (`InvalidAction` for a refused bound action).
+- **`ShieldedPoolModule.boundSpend(params)`** — `ShieldedPool.bound_spend`, submitted
+  unsigned: an unshield proof whose recipient is the action's executor and whose
+  `memo_hash` commits to the action (`BoundSpendParams`). Refused before building the
+  tx when an action key is zero, not 32 bytes or not a field element.
+- **`boundSpendDigest(genesis, action, changeMemo)`** and **`encodeBoundAction(action)`**
+  — the proof's `memo_hash` and the action's SCALE encoding, byte for byte as the
+  runtime computes them (`BoundAction`, `PrivateStakingAction`).
+- **`BoundSpentEvent` and `NoteMintedEvent`** in `ShieldedPoolEvent`; `mapZkEventData` maps
+  `BoundSpent` and `NoteMinted`, and `mapExtrinsicArgs` maps `bound_spend` (with its action).
+- **`InvalidBoundAction`, `AssetManagedByPallet` and pool code 14 (`INVALID_ACTION`)**
+  are classified (`shape`, `asset`, `shape`).
+- **`NominationPoolsModule.updateRoles(id, roles, signer)`** — the root hands a
+  pool's roles to other accounts. `PoolRolesUpdate` per role: an address (SS58, or EVM
+  as its mapped account) to set, `null` to remove, left out to keep. Refused before
+  signing when the signer is not the root, the pool does not exist, nothing changes or
+  an address is invalid.
+- **`NominationPools.update_roles` is text-signable**, as runtime spec 22 renders it:
+  the pool, then each role as `keep`, `remove` or its account. EVM and Solana roots
+  sign it from spec 22; spec 21 still refuses it (`BadProof`). Pinned by the shared
+  vector `pools_update_roles`.
+- **`NominationPoolsModule.setMetadata(id, profile, signer)`** — the root or bouncer
+  sets the pool's name and one link, written as `name` or `name\nurl`
+  (`encodePoolMetadata`). The name is ASCII letters and digits in words one space
+  apart (up to 64): no emoji, accents or look-alike letters. The link is one plain
+  `https` URL (lowercase host, no port or credentials). The runtime filters any other
+  metadata; refused here before signing too (`poolProfileRefusal`), as when the signer
+  is neither role.
+- **`PoolSummary.name` and `PoolSummary.url`** — the profile read back
+  (`parsePoolMetadata`), each kept only when it meets that rule; `decodePoolProfile`
+  reads metadata bytes exactly as the runtime does.
+- **Every pool role's call is text-signable**, as runtime spec 22 renders it:
+  `set_metadata` (the pool, its name and its link, shown as written),
+  `create_with_pool_id`, `adjust_pool_deposit` and `apply_slash`. The shared
+  vectors now carry an EIP-191 signature for every staking role's call, which
+  the EVM suite reproduces byte for byte.
+- **`PrivateStaking.set_private` is text-signable**, as runtime spec 22 renders it:
+  the pool, then `private members: on|off`. A pool root opens its pool to members
+  who join with shielded notes. Pinned by the shared vector
+  `private_staking_set_private`.
+- **Payment verification from the payer's proof, with the recipient's public
+  address only** — no secret on the server:
+    - `verifyPaymentProof(proof, { address, tree, expected })`: checks that the
+      `orbproof1:` proof's note is a payment to `address` that the recipient's
+      wallet opens and can spend, of exactly the expected asset and amount, and
+      that it is in the note tree. Reasons: `invalid-proof`, `wrong-asset`,
+      `wrong-amount`, `not-on-chain`; a node that cannot answer throws.
+    - `checkPaymentProof(proof, { address, expected })`: the same offline, for
+      a caller that asks the node itself.
+    - `encodePaymentProof` / `decodePaymentProof` (`orbproof1:` — commitment,
+      memo and ephemeral only, nothing unchecked to key an order on; checksummed,
+      canonical lowercase so one payment has one `commitmentHex`) and
+      `decodePaymentAddress` (an `orbpriv3:` address with its points; refuses
+      off-curve owner keys and viewing keys outside the prime subgroup).
+    - Accepted only if the proof's ephemeral key is the memo's (`[ephSk]·B`),
+      so the server reaches the shared secret the recipient's wallet reaches;
+      the memo's view tag must match, so the wallet's scanner finds the note. A
+      sender named by address is refused: only the viewing key proves that
+      claim. Untrusted input never throws; a misconfigured address or
+      expectation throws `TypeError` before the node is queried.
+  Pinned to the wallet by vectors from real notes (`tests/vectors/payment-proof.json`).
+- **Payments are confirmed in a finalized block by default.**
+  `verifyPayment` and `verifyPaymentProof` take `finality: 'finalized' | 'best'`
+  (default `finalized`) and report a payment that has landed but is not final
+  as `not-final`. `PrivacyModule.getFinalizedLeafIndex(commitmentHex)` reads
+  `ShieldedPool.CommitmentToLeafIndex` at the finalized head
+  (`privacy_getMerkleProofByCommitment` only answers from the best block, which
+  a reorganisation can revert); `commitmentLeafIndexKey` builds that storage
+  key for callers outside Node, and the WASI module returns it as
+  `storageKey`. A `NoteTreeLookup` without `getFinalizedLeafIndex` now needs
+  `finality: 'best'` (TypeError otherwise); `client.privacy` has it.
+- `secretMulPoint(point, scalar)`: variable-point multiplication whose steps
+  do not depend on the scalar. Opening a payment slip, a memo or a sender
+  claim with a viewing key now uses it, so a caller submitting slips to a
+  verifier cannot time the key out of it (`fastMulPoint` stays for public
+  scalars).
+- `orbinum-verify.wasm`, attached to every GitHub release: `checkPaymentProof`
+  as a WASI command — JSON on stdin, JSON on stdout — for backends that are not
+  on Node (Python, Go, PHP… through any WASI runtime). Built with Javy (pinned
+  and checksum-verified, `scripts/install-javy.sh`); CI runs it against the
+  same vectors as the TypeScript (`pnpm build:wasm`).
+
+### Changed
+
+- **`MIN_SPEC_VERSION` is 22**: private staking, bound spends and their signed texts.
+- **`parsePoolMetadata` follows `decodePoolProfile`**: metadata the runtime's rule refuses
+  (a bad link, a third line) is no profile, as the indexer and the signed text read it.
+  `decodePoolProfile` keeps a leading BOM, so it refuses it as the runtime does.
+- **`encodeBoundAction` / `boundSpendDigest` check the action** (32-byte non-zero field
+  keys, a u32 pool, a u128 minimum) before any proof is built.
+- **The metadata cache is scoped to the endpoint** (`guardedMetadataCache(cache, scope)`):
+  metadata one node served is never used for another.
+- `OrbinumClientProvider` clears its liveness probe's timeout and ignores a probe of a
+  client torn down meanwhile.
+- **`bound_spend` is refused by every signer**, like `unshield` and `private_transfer`
+  (`assertNotSignedSpend`).
+- **`verifyPayment` returns the commitment in canonical lowercase**: a payer
+  could reseal one slip with its commitment in another letter case and get a
+  second `commitmentHex` string past a case-sensitive unique constraint.
+- **`verifyPayment` refusals carry no `payment`** (`PaymentVerification` lost
+  the field on `ok: false`): a slip's fields are public on chain, so whoever
+  submits slips could have used a slip endpoint to decrypt the recipient's
+  incoming notes. Its docs now say it plainly: a slip proves a note to you
+  exists, not who made it — settle orders from the public with proofs.
+- Ephemeral keys in slips and memos must be in the prime subgroup: a
+  mixed-order key `P + T` would leak the viewing secret mod 8 through which of
+  eight answers opens.
+- The WASI module requires `assetId` (no silent native default).
+- Releases attach the `orbinum-verify.wasm` CI built and tested (not a rebuild),
+  with a GitHub build-provenance attestation for every asset; the npm package
+  is published with provenance. Workflow actions are pinned by commit SHA.
+- `decodePaymentSlip` / `openPaymentSlip` return null for non-string or
+  non-byte input instead of throwing.
+- The last decoded address and owner key are cached (one entry): a garbage
+  proof no longer costs two full-width subgroup checks.
+- **`verifyPayment` no longer returns the slip's `txHash` or leaf index** (new
+  `VerifiedPayment` type): both are stated by whoever sealed the slip and are
+  not checked, so a payer could reseal one slip with another `txHash` and a
+  backend keying orders on it would be paid twice. The leaf index comes from
+  the node. A payment is its `commitmentHex`. `readPaymentSlip` still reports
+  them, marked unverified.
+- `poseidon-lite` is imported per arity (`poseidon-lite/poseidon2`,
+  `/poseidon4`), so a bundler no longer pulls all sixteen Poseidon variants
+  (~800 kB) into an app that uses this SDK.
+
+### Fixed
+
+- **`OrbinumClientProvider.reset()` cancels an attempt in flight.** The attempt used to
+  land after the reset and bring the provider back `connected` with a client nobody owned,
+  while a fresh caller opened a second one: two WebSockets, each downloading the metadata.
+  A listener that asks for the client on `connecting` now awaits that attempt too; a
+  caller that was awaiting the cancelled attempt gets `ConnectionSupersededError`, its cue
+  to ask for the client again.
+
 ## [0.15.0] - 2026-11-08
 
 ### Added

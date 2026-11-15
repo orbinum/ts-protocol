@@ -19,6 +19,7 @@ import type {
     PoolState,
     PoolSummary,
 } from '../types/index';
+import { parsePoolMetadata } from '../metadata';
 
 type Enum<T extends string, V = undefined> = { type: T; value: V };
 type Num = bigint | number | string;
@@ -143,6 +144,7 @@ function summary(id: number, raw: RawBondedPool, metadata: Uint8Array): PoolSumm
         },
         commission: commission(raw.commission),
         metadata: utf8(metadata),
+        ...parsePoolMetadata(utf8(metadata)),
     };
 }
 

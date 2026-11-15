@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { NominationPoolsModule } from '../../../../src/chain/pallet/nomination-pools/NominationPoolsModule';
 import type { SubstrateClient } from '../../../../src/chain/substrate/SubstrateClient';
+import { createWithPoolIdCallArgs } from '../../../../src/chain/pallet/nomination-pools/calls/callArgs';
 
 const ALICE = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY';
 const BOB = '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty';
@@ -111,6 +112,22 @@ describe('NominationPoolsModule calls', () => {
         await module.setClaimPermission('PermissionlessAll', signer);
         expect(args('set_claim_permission')).toEqual({
             permission: { type: 'PermissionlessAll', value: undefined },
+        });
+        await module.adjustPoolDeposit(3, signer);
+        expect(args('adjust_pool_deposit')).toEqual({ pool_id: 3 });
+        await module.applySlash(BOB, signer);
+        expect(args('apply_slash')).toEqual({ member_account: BOB });
+        expect(
+            createWithPoolIdCallArgs(
+                { amount: 100n * ORB, root: ALICE, nominator: BOB, bouncer: CHARLIE },
+                7
+            )
+        ).toEqual({
+            amount: 100n * ORB,
+            root: ALICE,
+            nominator: BOB,
+            bouncer: CHARLIE,
+            pool_id: 7,
         });
     });
 
@@ -234,6 +251,8 @@ const POOL_SUMMARY = {
         claimPermission: { type: 'Account', account: BOB },
     },
     metadata: 'Orbinum pool',
+    name: 'Orbinum pool',
+    url: null,
 };
 
 describe('NominationPoolsModule reads', () => {
@@ -361,7 +380,7 @@ describe('NominationPoolsModule reads', () => {
         const pools = await new NominationPoolsModule(client).pools();
         expect(pools).toEqual([
             POOL_SUMMARY,
-            { ...POOL_SUMMARY, id: 2, memberCount: 1, metadata: '' },
+            { ...POOL_SUMMARY, id: 2, memberCount: 1, metadata: '', name: '' },
         ]);
     });
 
@@ -689,6 +708,68 @@ describe('NominationPoolsModule commission calls', () => {
                 /not an account/
             ),
         ]);
+    });
+});
+
+describe('NominationPoolsModule.updateRoles', () => {
+    const alice = signerOf(ALICE_KEY);
+    const bob = signerOf(BOB_KEY);
+
+    it('encodes set, remove and keep per role; an EVM address as its mapped account', async () => {
+        const { module, args } = commissionClient();
+        await module.updateRoles(
+            1,
+            { nominator: '0xf24FF3a9CF04c71Dbc94D0b566f7A27B94566cac', bouncer: null },
+            alice
+        );
+        const sent = args('update_roles');
+        expect(sent).toMatchObject({
+            pool_id: 1,
+            new_root: { type: 'Noop', value: undefined },
+            new_nominator: { type: 'Set' },
+            new_bouncer: { type: 'Remove', value: undefined },
+        });
+        expect(sent.new_nominator.value).toMatch(/^5/);
+    });
+
+    it('refuses before signing: not the root, no pool, nothing to change, a bad address', async () => {
+        const { module, called } = commissionClient();
+        await expect(module.updateRoles(1, { root: BOB }, bob)).rejects.toThrow(
+            'updateRoles: DoesNotHavePermission'
+        );
+        await expect(module.updateRoles(2, { root: BOB }, alice)).rejects.toThrow('no pool 2');
+        await expect(module.updateRoles(1, {}, alice)).rejects.toThrow('no role to change');
+        await expect(module.updateRoles(1, { bouncer: 'nope' }, alice)).rejects.toThrow(
+            'updateRoles.bouncer: not an account address'
+        );
+        expect(called('update_roles')).toBe(false);
+    });
+});
+
+describe('NominationPoolsModule.setMetadata', () => {
+    const alice = signerOf(ALICE_KEY);
+    const bob = signerOf(BOB_KEY);
+
+    it('writes the name and link as the pool metadata, signed by the root or bouncer', async () => {
+        const { module, args } = commissionClient();
+        await module.setMetadata(1, { name: 'Orbinum Pool', url: 'https://x.com/orbinum' }, alice);
+        const sent = args('set_metadata');
+        expect(sent.pool_id).toBe(1);
+        expect(new TextDecoder().decode(sent.metadata)).toBe('Orbinum Pool\nhttps://x.com/orbinum');
+    });
+
+    it('refuses before signing: not the root or bouncer, no pool, an unwritable profile', async () => {
+        const { module, called } = commissionClient();
+        await expect(module.setMetadata(1, { name: 'P', url: null }, bob)).rejects.toThrow(
+            'setMetadata: DoesNotHavePermission'
+        );
+        await expect(module.setMetadata(2, { name: 'P', url: null }, alice)).rejects.toThrow(
+            'no pool 2'
+        );
+        await expect(
+            module.setMetadata(1, { name: 'P', url: 'http://x.com' }, alice)
+        ).rejects.toThrow('setMetadata: UrlNotHttps');
+        expect(called('set_metadata')).toBe(false);
     });
 });
 

@@ -179,6 +179,66 @@ describe('ShieldedPoolModule.shield', () => {
     });
 });
 
+// ─── boundSpend ───────────────────────────────────────────────────────────────
+
+const key = (b: number) => new Uint8Array(32).fill(b);
+const { recipientAddress: _recipient, ...SPEND_PARAMS } = UNSHIELD_PARAMS;
+const ENTER = {
+    ...SPEND_PARAMS,
+    fee: 5n,
+    action: {
+        type: 'PrivateStaking' as const,
+        value: {
+            type: 'Enter' as const,
+            value: { poolId: 3, ownerPk: key(1), blinding: key(2), minShares: 7n },
+        },
+    },
+};
+
+describe('ShieldedPoolModule.boundSpend', () => {
+    it('submits bound_spend unsigned with the action by its runtime field names', async () => {
+        const client = bareTxClient('bound_spend');
+        const result = await new ShieldedPoolModule(client).boundSpend(ENTER);
+        expect(result.ok).toBe(true);
+        expect(client._submitUnsignedAndWatch).toHaveBeenCalledOnce();
+        const args = client._txEntry.mock.calls[0]![0];
+        expect(args).not.toHaveProperty('recipient');
+        expect(args.fee).toBe(5n);
+        expect(args.change_commitment).toBe('0x' + '00'.repeat(32));
+        expect(args.action).toEqual({
+            type: 'PrivateStaking',
+            value: {
+                type: 'Enter',
+                // PAPI takes `[u8; 32]` as hex.
+                value: {
+                    pool_id: 3,
+                    owner_pk: '0x' + '01'.repeat(32),
+                    blinding: '0x' + '02'.repeat(32),
+                    min_shares: 7n,
+                },
+            },
+        });
+    });
+
+    it('refuses a zero or non-canonical key before building the tx', async () => {
+        const client = bareTxClient('bound_spend');
+        const mod = new ShieldedPoolModule(client);
+        const withKey = (ownerPk: Uint8Array) => ({
+            ...ENTER,
+            action: {
+                ...ENTER.action,
+                value: { ...ENTER.action.value, value: { ...ENTER.action.value.value, ownerPk } },
+            },
+        });
+        await expect(mod.boundSpend(withKey(key(0)))).rejects.toThrow(/ownerPk/);
+        await expect(mod.boundSpend(withKey(key(0xff)))).rejects.toThrow(/ownerPk/);
+        await expect(mod.boundSpend(withKey(new Uint8Array(31).fill(1)))).rejects.toThrow(
+            /32 bytes/
+        );
+        expect(client._txEntry).not.toHaveBeenCalled();
+    });
+});
+
 // ─── unshield ─────────────────────────────────────────────────────────────────
 
 describe('ShieldedPoolModule.unshield', () => {

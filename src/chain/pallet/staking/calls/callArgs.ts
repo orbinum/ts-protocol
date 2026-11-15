@@ -84,6 +84,11 @@ export function payoutStakersCallArgs(validator: string, era: number) {
     return { validator_stash: toSs58(validator, 'payoutStakers.validator'), era };
 }
 
+export function payoutStakersByPageCallArgs(validator: string, era: number, page: number) {
+    assertU32(page, 'payoutStakersByPage.page');
+    return { ...payoutStakersCallArgs(validator, era), page };
+}
+
 /** At most `MAX_NOMINATIONS` per call: more could not be signed as text (`MAX_LISTED_ACCOUNTS`). */
 export function kickCallArgs(who: string[]) {
     return { who: accountList(who, MAX_NOMINATIONS, 'kick.who') };

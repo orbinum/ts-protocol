@@ -47,3 +47,24 @@ describe('bjj-fast ≡ zk-kit', () => {
         expect(fastMulPoint([0n, 1n], 12345n)).toEqual([0n, 1n]);
     });
 });
+
+describe('secretMulPoint ≡ fastMulPoint (same point, constant-time path)', () => {
+    it('agrees on random and edge scalars', async () => {
+        const { secretMulPoint } = await import('../../../src/foundation/crypto/bjj-fast');
+        const points = [fastMulBase(7n), fastMulBase(123456789n), Base8 as [bigint, bigint]];
+        const scalars = [
+            1n,
+            2n,
+            BABYJUB_SUBORDER - 1n,
+            BABYJUB_SUBORDER,
+            BABYJUB_SUBORDER + 5n,
+            0n,
+            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdn,
+        ];
+        for (const p of points) {
+            for (const s of scalars) {
+                expect(secretMulPoint(p, s), `${s}`).toEqual(fastMulPoint(p, s));
+            }
+        }
+    });
+});

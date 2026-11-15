@@ -41,3 +41,35 @@ export const vector = (name: string): PaymentVector => {
     if (!found) throw new Error(`no vector ${name}`);
     return found;
 };
+
+/**
+ * Payer's proofs (`orbproof1:`): real notes built with a known ephemeral, each
+ * with what the recipient's server must conclude (null: refused).
+ */
+export interface ProofVector {
+    name: string;
+    proof: string;
+    expected: null | {
+        value: string;
+        assetId: string;
+        sender: { kind: 'anonymous' } | { kind: 'pseudonym'; name: string };
+    };
+}
+
+const PROOF_FILE: {
+    recipient: { address: string; ownerPk: string; viewingSecretKey: string };
+    otherAddress: string;
+    cases: ProofVector[];
+} = JSON.parse(readFileSync(join(import.meta.dirname, '../../vectors/payment-proof.json'), 'utf8'));
+
+export const PROOF_VECTORS = PROOF_FILE.cases;
+/** The recipient's public address: all a proof verifier holds. */
+export const ADDRESS = PROOF_FILE.recipient.address;
+export const OTHER_ADDRESS = PROOF_FILE.otherAddress;
+/** The same recipient's viewing secret key: what their WALLET opens the note with. */
+export const ADDRESS_IVSK = fromHex(PROOF_FILE.recipient.viewingSecretKey);
+export const proofVector = (name: string): ProofVector => {
+    const found = PROOF_VECTORS.find((v) => v.name === name);
+    if (!found) throw new Error(`no proof vector ${name}`);
+    return found;
+};

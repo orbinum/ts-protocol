@@ -1,6 +1,7 @@
 import { createClient, Binary, type PolkadotClient, type TxFinalizedPayload } from 'polkadot-api';
 import type { SignerTxCreator as SubstrateSigner } from 'polkadot-api/tx-creator';
 import { getWsProvider } from 'polkadot-api/ws';
+import { guardedMetadataCache, type MetadataCache } from './metadataCache';
 import { fromHex } from '../../foundation/encoding/hex';
 import { jsonRpcBatch, wsUrlToHttp, type JsonRpcCall } from '../../foundation/jsonRpcHttp';
 import type { ChainInfo, SystemHealth, EventRecord, RawBlockHeader, BlockInfo } from './types';
@@ -67,14 +68,22 @@ export class SubstrateClient {
 
     /**
      * Connects to the Orbinum node via WebSocket.
-     * Throws if the node does not respond within `timeoutMs`.
+     * Throws if the node does not respond within `timeoutMs`. With `metadataCache`, the
+     * runtime metadata is read from it when the runtime is unchanged, and stored when not.
      */
-    static async connect(wsUrl: string, timeoutMs = 15_000): Promise<SubstrateClient> {
+    static async connect(
+        wsUrl: string,
+        timeoutMs = 15_000,
+        options: { metadataCache?: MetadataCache | undefined } = {}
+    ): Promise<SubstrateClient> {
         // Keep PAPI's WebSocket heartbeat active so idle connections are not dropped
         // by intermediaries (e.g. Cloudflare). A 30s heartbeat stays well below the
         // typical idle timeout and prevents unnecessary reconnects.
         const provider = getWsProvider(wsUrl, { heartbeatTimeout: 30_000 });
-        const papi = createClient(provider);
+        const papi = createClient(
+            provider,
+            options.metadataCache ? guardedMetadataCache(options.metadataCache, wsUrl) : {}
+        );
 
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {

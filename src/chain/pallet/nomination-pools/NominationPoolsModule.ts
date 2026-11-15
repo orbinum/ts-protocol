@@ -10,12 +10,15 @@ import {
 } from '../staking/storage/reads';
 import { signerAccount } from '../signerAccount';
 import {
+    adjustPoolDepositCallArgs,
+    applySlashCallArgs,
     bondExtraCallArgs,
     bondExtraOtherCallArgs,
     chillCallArgs,
     claimCommissionCallArgs,
     claimPayoutOtherCallArgs,
     createCallArgs,
+    createWithPoolIdCallArgs,
     joinCallArgs,
     nominateCallArgs,
     poolWithdrawUnbondedCallArgs,
@@ -24,8 +27,10 @@ import {
     setCommissionChangeRateCallArgs,
     setCommissionClaimPermissionCallArgs,
     setCommissionMaxCallArgs,
+    setMetadataCallArgs,
     setStateCallArgs,
     unbondCallArgs,
+    updateRolesCallArgs,
     withdrawUnbondedCallArgs,
 } from './calls/callArgs';
 import {
@@ -58,6 +63,8 @@ import type {
     Pool,
     PoolBondExtra,
     PoolMember,
+    PoolProfile,
+    PoolRolesUpdate,
     PoolPendingSlash,
     PoolsConfig,
     PoolState,
@@ -69,10 +76,10 @@ import type {
  * stake below the nominator minimum by joining a pool, which nominates as one.
  * Members' funds stay in their own accounts, held as a delegation to the pool.
  *
- * Every call here is text-signable (ed25519 and EVM accounts). Metadata and role
- * changes are not, and are not wrapped: sign them with an sr25519 account through the
- * UnsafeApi. The commission calls check the pool's rules before signing
- * (`./commission`), so a wallet is not asked to sign what the chain would refuse.
+ * Every call here is text-signable (ed25519 and EVM accounts); role changes and the
+ * pool's name and link from runtime spec 22. The commission, role and profile calls
+ * check the pool's rules before signing (`./commission`, `./metadata`), so a wallet is
+ * not asked to sign what the chain would refuse.
  */
 export class NominationPoolsModule {
     constructor(private readonly substrate: SubstrateClient) {}
@@ -198,6 +205,37 @@ export class NominationPoolsModule {
     }
 
     /**
+     * Creates a pool under `id`, an id a destroyed pool freed (at most `LastPoolId`); the
+     * signer is its depositor. Refused before signing when pool `id` exists or was never
+     * issued.
+     */
+    async createWithPoolId(
+        params: CreatePoolParams,
+        id: number,
+        signer: SubstrateSigner,
+        options?: SubmitOptions
+    ): Promise<TxResult> {
+        const args = createWithPoolIdCallArgs(params, id);
+        const [pool, config] = await Promise.all([
+            readPool(this.substrate, id),
+            readPoolsConfig(this.substrate),
+        ]);
+        if (pool) throw new Error('createWithPoolId: PoolIdInUse');
+        if (id > config.lastPoolId) throw new Error('createWithPoolId: InvalidPoolId');
+        return this.submit('create_with_pool_id', args, signer, options);
+    }
+
+    /** Tops pool `id`'s reward account up to the existential deposit, or returns the excess. Anyone may call it. */
+    adjustPoolDeposit(id: number, signer: SubstrateSigner, options?: SubmitOptions) {
+        return this.submit('adjust_pool_deposit', adjustPoolDepositCallArgs(id), signer, options);
+    }
+
+    /** Applies `member`'s pending share of a pool slash. Anyone may call it. */
+    applySlash(member: string, signer: SubstrateSigner, options?: SubmitOptions) {
+        return this.submit('apply_slash', applySlashCallArgs(member), signer, options);
+    }
+
+    /**
      * Nominates `validators` for pool `id` (root or nominator), replacing the current list.
      * Refused before signing, as `staking.nominate`, when a new target is not a validator
      * candidate or blocks new nominations (`BadTarget`, after the fee); the pool's current
@@ -231,6 +269,47 @@ export class NominationPoolsModule {
     /** Opens, blocks or starts destroying pool `id` (root or bouncer). */
     setState(id: number, state: PoolState, signer: SubstrateSigner, options?: SubmitOptions) {
         return this.submit('set_state', setStateCallArgs(id, state), signer, options);
+    }
+
+    /**
+     * Changes pool `id`'s roles (root only); see `PoolRolesUpdate`. Refused before signing
+     * when the signer is not the root or there is no such pool. EVM and Solana roots can
+     * sign it from runtime spec 22; spec 21 refuses it as text.
+     */
+    async updateRoles(
+        id: number,
+        roles: PoolRolesUpdate,
+        signer: SubstrateSigner,
+        options?: SubmitOptions
+    ) {
+        const args = updateRolesCallArgs(id, roles);
+        await this.checkCommission('updateRoles', id, signer, (ctx, who) =>
+            who === null || ctx.roles.root === who ? null : 'DoesNotHavePermission'
+        );
+        return this.submit('update_roles', args, signer, options);
+    }
+
+    /**
+     * Sets pool `id`'s name and its one link (root or bouncer), as `name\nurl` in its
+     * metadata (`./metadata`); an empty profile clears it. Refused before signing when the
+     * profile cannot be written (an unsafe name, a link that is not `https`, over 256
+     * bytes), the signer is neither the root nor the bouncer, or there is no such pool.
+     * EVM and Solana accounts sign it from runtime spec 22: the text shows the name's
+     * length and fingerprint, so show the profile itself beside the signing prompt.
+     */
+    async setMetadata(
+        id: number,
+        profile: PoolProfile,
+        signer: SubstrateSigner,
+        options?: SubmitOptions
+    ) {
+        const args = setMetadataCallArgs(id, profile);
+        await this.checkCommission('setMetadata', id, signer, (ctx, who) =>
+            who === null || ctx.roles.root === who || ctx.roles.bouncer === who
+                ? null
+                : 'DoesNotHavePermission'
+        );
+        return this.submit('set_metadata', args, signer, options);
     }
 
     /** Stops pool `id` nominating (root or nominator); its bond stays. */
@@ -317,7 +396,7 @@ export class NominationPoolsModule {
         return this.submit('set_commission_claim_permission', args, signer, options);
     }
 
-    /** Throws what the chain would refuse pool `id`'s commission call with, before signing. */
+    /** Throws what the chain would refuse pool `id`'s root call with, before signing. */
     private async checkCommission(
         where: string,
         id: number,

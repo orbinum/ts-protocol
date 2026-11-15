@@ -3,3 +3,4 @@ dist/
 
 # npm pack output — a build artefact, not source.
 *.tgz
+dist-wasm/

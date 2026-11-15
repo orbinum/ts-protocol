@@ -20,6 +20,7 @@ import {
     nominateCallArgs,
     payeeArg,
     payoutStakersCallArgs,
+    payoutStakersByPageCallArgs,
     setKeysCallArgs,
     validateCallArgs,
     WITHDRAW_UNBONDED_ARGS,
@@ -172,7 +173,8 @@ export class StakingModule {
     }
 
     /**
-     * Starts unlocking `value`; it is withdrawable `bondingDuration` eras later. Unbonding
+     * Starts unlocking `value`; it is withdrawable `nominatorUnbondDuration` eras later for
+     * a nominator, `bondingDuration` for a validator or anyone who validated within it. Unbonding
      * everything also chills the stash (it stops nominating or validating). Refused before
      * signing when it would leave a nominator or validator bonded below its role's minimum
      * (`InsufficientBond`, after the fee): unbond everything, or chill first.
@@ -283,6 +285,21 @@ export class StakingModule {
     ) {
         const args = payoutStakersCallArgs(validator, era);
         return this.submit('Staking', 'payout_stakers', args, signer, options);
+    }
+
+    /**
+     * Pays one page of `validator`'s nominators for `era` (`payoutStakers` pays the next
+     * unpaid page). Anyone may call it.
+     */
+    payoutStakersByPage(
+        validator: string,
+        era: number,
+        page: number,
+        signer: SubstrateSigner,
+        options?: SubmitOptions
+    ) {
+        const args = payoutStakersByPageCallArgs(validator, era, page);
+        return this.submit('Staking', 'payout_stakers_by_page', args, signer, options);
     }
 
     // ─── Session keys and the validator set ────────────────────────────────────

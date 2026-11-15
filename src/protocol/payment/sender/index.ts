@@ -10,7 +10,7 @@
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { BN254_R } from '../../../foundation/crypto/constants';
-import { fastMulPoint } from '../../../foundation/crypto/bjj-fast';
+import { secretMulPoint } from '../../../foundation/crypto/bjj-fast';
 import { unpackSubgroupViewingKey } from '../../../foundation/crypto/bjj';
 import { bigintTo32Le, bytesToBigintLE } from '../../../foundation/encoding/bytes';
 import { scalarToHex, toHex } from '../../../foundation/encoding/hex';
@@ -84,8 +84,8 @@ export function senderAddressClaim(
     const scalar = bytesToBjjScalar(viewingSecretKey);
     const ikm = new Uint8Array(96);
     ikm.set(sharedSecret.subarray(0, 32));
-    ikm.set(bigintTo32Le(fastMulPoint(senderPoint, scalar)[0]), 32);
-    ikm.set(bigintTo32Le(fastMulPoint(ownerPoint, scalar)[0]), 64);
+    ikm.set(bigintTo32Le(secretMulPoint(senderPoint, scalar)[0]), 32);
+    ikm.set(bigintTo32Le(secretMulPoint(ownerPoint, scalar)[0]), 64);
     const info = new Uint8Array(IDENTITY_BLINDING_DOMAIN.length + 64);
     info.set(IDENTITY_BLINDING_DOMAIN);
     info.set(bigintTo32Le(claim.ownerPk), IDENTITY_BLINDING_DOMAIN.length);

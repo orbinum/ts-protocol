@@ -26,7 +26,7 @@ vi.mock('../../../src/chain/evm/explorer/EvmExplorer', () => ({
 
 function makeSubstrate(): SubstrateClient {
     return {
-        request: vi.fn().mockResolvedValue({ specVersion: 21 }),
+        request: vi.fn().mockResolvedValue({ specVersion: 22 }),
         unsafe: { tx: {} },
         destroy: vi.fn(),
         getChainInfo: vi.fn(),
@@ -64,13 +64,13 @@ beforeEach(() => {
 // ─── OrbinumClient.connect ────────────────────────────────────────────────────
 
 describe('OrbinumClient.connect', () => {
-    it('refuses a runtime older than spec 21 and closes the connection', async () => {
+    it('refuses a runtime older than spec 22 and closes the connection', async () => {
         const substrate = makeSubstrate();
-        vi.mocked(substrate.request).mockResolvedValue({ specVersion: 20 });
+        vi.mocked(substrate.request).mockResolvedValue({ specVersion: 21 });
         vi.mocked(SubstrateClient.connect).mockResolvedValue(substrate);
 
         await expect(OrbinumClient.connect({ substrateWs: 'ws://localhost:9944' })).rejects.toThrow(
-            /spec 20.*spec 21 or later/
+            /spec 21.*spec 22 or later/
         );
         expect(substrate.destroy).toHaveBeenCalledTimes(1);
     });
@@ -94,8 +94,16 @@ describe('OrbinumClient.connect', () => {
 
         expect(vi.mocked(SubstrateClient.connect)).toHaveBeenCalledWith(
             'ws://localhost:9944',
-            15_000
+            15_000,
+            { metadataCache: undefined }
         );
+    });
+
+    it('forwards the metadata cache to SubstrateClient.connect', async () => {
+        vi.mocked(SubstrateClient.connect).mockResolvedValue(makeSubstrate());
+        const metadataCache = { get: async () => null, set: () => {} };
+        await OrbinumClient.connect({ substrateWs: 'ws://localhost:9944', metadataCache });
+        expect(vi.mocked(SubstrateClient.connect).mock.calls.at(-1)![2]).toEqual({ metadataCache });
     });
 
     it('forwards custom connectTimeoutMs to SubstrateClient.connect', async () => {
@@ -109,7 +117,8 @@ describe('OrbinumClient.connect', () => {
 
         expect(vi.mocked(SubstrateClient.connect)).toHaveBeenCalledWith(
             'ws://localhost:9944',
-            5_000
+            5_000,
+            { metadataCache: undefined }
         );
     });
 

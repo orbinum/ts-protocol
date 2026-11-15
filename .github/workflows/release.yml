@@ -6,264 +6,308 @@ name: Release
 # already on npm stays green and does nothing. Re-running a failed CI run starts
 # the release again when it passes.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch:
+    workflow_run:
+        workflows: [CI]
+        types: [completed]
+        branches: [main]
+    workflow_dispatch:
 
-# Each job asks for what it needs.
 permissions:
-  contents: read
+    contents: write
 
 # Never cancel a release in flight: a run killed between `git push origin <tag>`
 # and the npm publish leaves a tag with no package behind it. That state is
 # recoverable now — `verify` asks npm, not the tag — but a half-finished release
 # is still worth not creating on purpose.
 concurrency:
-  group: release
-  cancel-in-progress: false
+    group: release
+    cancel-in-progress: false
 
 # The commit to release: the one CI tested, not main's tip (`github.sha` under `workflow_run`).
 env:
-  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
-  verify:
-    name: Verify version
-    # Only after CI passed on a push to main; a manual run releases main, never another branch.
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' ||
-       (github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push'))
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # A manual run reads this commit's CI runs.
-      actions: read
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
-      should_release: ${{ steps.check.outputs.published == 'false' }}
-      tag_exists: ${{ steps.check.outputs.tag_exists }}
+    verify:
+        name: Verify version
+        # Only after CI passed on a push to main; a manual run releases main, never another branch.
+        if: >-
+            github.ref == 'refs/heads/main' &&
+            (github.event_name == 'workflow_dispatch' ||
+             (github.event.workflow_run.conclusion == 'success' &&
+              github.event.workflow_run.event == 'push'))
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            # A manual run reads this commit's CI runs.
+            actions: read
+        outputs:
+            version: ${{ steps.version.outputs.version }}
+            tag: ${{ steps.version.outputs.tag }}
+            should_release: ${{ steps.check.outputs.published == 'false' }}
+            tag_exists: ${{ steps.check.outputs.tag_exists }}
+            ci_run: ${{ steps.ci.outputs.run }}
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ env.SHA }}
-          fetch-depth: 0
-          # Tags are NOT fetched by `fetch-depth: 0` — that only controls
-          # history depth. Without this the tag check below sees no tags at all,
-          # reports the version as unreleased, and the tagging step then dies on
-          # `tag already exists` against a tag it could not see.
-          fetch-tags: true
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+              with:
+                  ref: ${{ env.SHA }}
+                  fetch-depth: 0
+                  # Tags are NOT fetched by `fetch-depth: 0` — that only controls
+                  # history depth. Without this the tag check below sees no tags at all,
+                  # reports the version as unreleased, and the tagging step then dies on
+                  # `tag already exists` against a tag it could not see.
+                  fetch-tags: true
 
-      - name: Extract version from package.json
-        id: version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          echo "📦 Version: $VERSION"
+            - name: Extract version from package.json
+              id: version
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+                  echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+                  echo "📦 Version: $VERSION"
 
-      # Two separate questions, because they have separate answers.
-      #
-      # `published` decides whether this workflow does anything at all, and it
-      # asks npm — the registry is the only record of what actually shipped. The
-      # tag used to play that role, and it is not equal to it: a run that failed
-      # between pushing the tag and publishing left a tag behind, and the next
-      # run then read "already released" and refused to finish the job. Worse,
-      # tagging is not idempotent, so a re-run died on `tag already exists`
-      # instead of continuing.
-      #
-      # `tag_exists` only decides whether the tagging step runs, so a retry can
-      # skip past what already succeeded and get to the part that did not.
-      - name: Check release state
-        id: check
-        run: |
-          if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "ℹ️  Tag ${{ steps.version.outputs.tag }} already exists — tagging will be skipped."
-            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "✅ Tag ${{ steps.version.outputs.tag }} is new."
-            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
-          fi
+            # Two separate questions, because they have separate answers.
+            #
+            # `published` decides whether this workflow does anything at all, and it
+            # asks npm — the registry is the only record of what actually shipped. The
+            # tag used to play that role, and it is not equal to it: a run that failed
+            # between pushing the tag and publishing left a tag behind, and the next
+            # run then read "already released" and refused to finish the job. Worse,
+            # tagging is not idempotent, so a re-run died on `tag already exists`
+            # instead of continuing.
+            #
+            # `tag_exists` only decides whether the tagging step runs, so a retry can
+            # skip past what already succeeded and get to the part that did not.
+            - name: Check release state
+              id: check
+              run: |
+                  if git rev-parse "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+                    echo "ℹ️  Tag ${{ steps.version.outputs.tag }} already exists — tagging will be skipped."
+                    echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "✅ Tag ${{ steps.version.outputs.tag }} is new."
+                    echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+                  fi
 
-          if npm view "@orbinum/protocol@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then
-            echo "⚠️  @orbinum/protocol@${{ steps.version.outputs.version }} is already on npm — nothing to release."
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "✅ @orbinum/protocol@${{ steps.version.outputs.version }} is not on npm yet."
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
+                  if npm view "@orbinum/protocol@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then
+                    echo "⚠️  @orbinum/protocol@${{ steps.version.outputs.version }} is already on npm — nothing to release."
+                    echo "published=true" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "✅ @orbinum/protocol@${{ steps.version.outputs.version }} is not on npm yet."
+                    echo "published=false" >> "$GITHUB_OUTPUT"
+                  fi
 
-      # A run started by CI already has its pass; a manual one needs a passed CI
-      # run of this commit on a push to main.
-      - name: Require CI to have passed on this commit
-        if: github.event_name == 'workflow_dispatch' && steps.check.outputs.published == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PASSED=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --branch main \
-            --event push --status success --json databaseId --jq 'length')
-          if [ "$PASSED" -eq 0 ]; then
-            echo "::error::CI has not passed on $SHA. Re-run it: the release follows when it passes."
-            exit 1
-          fi
+            # A run started by CI already has its pass; a manual one needs a passed CI
+            # run of this commit on a push to main.
+            - name: Require CI to have passed on this commit
+              if: github.event_name == 'workflow_dispatch' && steps.check.outputs.published == 'false'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  PASSED=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --branch main \
+                    --event push --status success --json databaseId --jq 'length')
+                  if [ "$PASSED" -eq 0 ]; then
+                    echo "::error::CI has not passed on $SHA. Re-run it: the release follows when it passes."
+                    exit 1
+                  fi
 
-      # A release whose notes would be empty is a mistake, not a release: the
-      # CHANGELOG section is the release notes.
-      - name: Require a CHANGELOG entry for this version
-        if: steps.check.outputs.published == 'false'
-        run: |
-          if ! grep -q "^## \[${{ steps.version.outputs.version }}\]" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no '## [${{ steps.version.outputs.version }}]' section. Rename '## [Unreleased]' to '## [${{ steps.version.outputs.version }}] - $(date +%F)' before releasing."
-            exit 1
-          fi
-          echo "✅ CHANGELOG entry found."
+            # The CI run that tested this commit: the WASM module it built is the one
+            # released, never a rebuild.
+            - name: Find the CI run of this commit
+              id: ci
+              if: steps.check.outputs.published == 'false'
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  RUN="${{ github.event.workflow_run.id }}"
+                  if [ -z "$RUN" ]; then
+                      RUN=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --branch main \
+                          --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+                  fi
+                  if [ -z "$RUN" ] || [ "$RUN" = "null" ]; then
+                      echo "::error::No passed CI run of $SHA to take the WASM module from."
+                      exit 1
+                  fi
+                  echo "run=$RUN" >> "$GITHUB_OUTPUT"
 
-  # Only after `verify`, which runs only once CI passed on this commit.
-  publish:
-    name: Build, Tag, Release and Publish
-    needs: verify
-    if: needs.verify.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      # npm provenance (`--provenance`) ties the tarball to this run and commit.
-      id-token: write
+            # A release whose notes would be empty is a mistake, not a release: the
+            # CHANGELOG section is the release notes.
+            - name: Require a CHANGELOG entry for this version
+              if: steps.check.outputs.published == 'false'
+              run: |
+                  if ! grep -q "^## \[${{ steps.version.outputs.version }}\]" CHANGELOG.md; then
+                    echo "::error::CHANGELOG.md has no '## [${{ steps.version.outputs.version }}]' section. Rename '## [Unreleased]' to '## [${{ steps.version.outputs.version }}] - $(date +%F)' before releasing."
+                    exit 1
+                  fi
+                  echo "✅ CHANGELOG entry found."
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ env.SHA }}
-          fetch-depth: 0
-          # Tags are NOT fetched by `fetch-depth: 0` — that only controls
-          # history depth. Without this the tag check below sees no tags at all,
-          # reports the version as unreleased, and the tagging step then dies on
-          # `tag already exists` against a tag it could not see.
-          fetch-tags: true
+    # Only after `verify`, which runs only once CI passed on this commit.
+    publish:
+        name: Build, Tag, Release and Publish
+        needs: verify
+        if: needs.verify.outputs.should_release == 'true'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            # The WASM module CI tested, downloaded from that run.
+            actions: read
+            # Provenance: npm (`--provenance`) and GitHub attestations for the assets.
+            id-token: write
+            attestations: write
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
-        with:
-          run_install: false
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+              with:
+                  ref: ${{ env.SHA }}
+                  fetch-depth: 0
+                  # Tags are NOT fetched by `fetch-depth: 0` — that only controls
+                  # history depth. Without this the tag check below sees no tags at all,
+                  # reports the version as unreleased, and the tagging step then dies on
+                  # `tag already exists` against a tag it could not see.
+                  fetch-tags: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: "22"
-          # No dependency cache: one that any branch's run can write must not
-          # feed what is published.
-          registry-url: "https://registry.npmjs.org"
+            - name: Setup pnpm
+              uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+              with:
+                  run_install: false
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+            - name: Setup Node.js
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+              with:
+                  node-version: '22'
+                  # No dependency cache: one that any branch's run can write must not
+                  # feed what is published.
+                  registry-url: 'https://registry.npmjs.org'
 
-      # CI already ran every check; this build only produces the artifacts the
-      # release attaches and the tarball npm publishes.
-      - name: Build
-        run: pnpm build
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
 
-      - name: Package release assets
-        run: |
-          TAG=${{ needs.verify.outputs.tag }}
-          mkdir -p release
-          tar -czf "release/orbinum-protocol-${TAG}.tar.gz" dist/
-          (cd release && sha256sum ./*.tar.gz > "checksums-${TAG}.txt")
-          ls -lh release/
-          cat "release/checksums-${TAG}.txt"
+            # CI already ran every check; this build only produces the artifacts the
+            # release attaches and the tarball npm publishes.
+            - name: Build
+              run: pnpm build
 
-      - name: Create release notes
-        run: |
-          # The section for the version being released, by exact heading —
-          # matching "the first ## [" instead would pick up [Unreleased] and
-          # ship unreleased work as the release notes.
-          awk -v tag="## [${{ needs.verify.outputs.version }}]" '
-            index($0, tag) == 1  { flag = 1; next }
-            flag && /^## \[/     { exit }
-            flag && /^\[[^]]+\]:/{ exit }   # link definitions end the section
-            flag
-          ' CHANGELOG.md > release_notes_body.md
+            # Not rebuilt: the module released is byte for byte the one CI ran its
+            # tests against (the vectors, under node:wasi).
+            - name: Download the WASM module CI tested
+              uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+              with:
+                  name: orbinum-verify-wasm
+                  path: dist-wasm
+                  run-id: ${{ needs.verify.outputs.ci_run }}
+                  github-token: ${{ github.token }}
 
-          {
-            echo "## ${{ needs.verify.outputs.tag }}"
-            echo ""
-            if [ -s release_notes_body.md ]; then
-              cat release_notes_body.md
-            else
-              echo "- Release generated from CI."
-            fi
-            echo ""
-            echo "## Install"
-            echo ""
-            echo '```sh'
-            echo "pnpm add @orbinum/protocol@${{ needs.verify.outputs.version }}"
-            echo '```'
-            echo ""
-            echo "## Release Assets"
-            echo ""
-            echo "- \`orbinum-protocol-${{ needs.verify.outputs.tag }}.tar.gz\` — compiled dist (ESM + CJS + types)"
-            echo "- \`checksums-${{ needs.verify.outputs.tag }}.txt\` — SHA-256 checksums"
-          } > release_notes.md
+            - name: Package release assets
+              run: |
+                  TAG=${{ needs.verify.outputs.tag }}
+                  mkdir -p release
+                  tar -czf "release/orbinum-protocol-${TAG}.tar.gz" dist/
+                  cp dist-wasm/orbinum-verify.wasm release/
+                  (cd release && sha256sum ./*.tar.gz ./*.wasm > "checksums-${TAG}.txt")
+                  ls -lh release/
+                  cat "release/checksums-${TAG}.txt"
 
-      # Tags the commit only if the tag is not already there, so a retry after a
-      # failed publish gets past this instead of dying on `tag already exists`.
-      #
-      # The `if:` above is the fast path; the check below is what makes the step
-      # correct. They are not redundant: `tag_exists` is computed in another job,
-      # on another checkout, and the first attempt at this got it wrong because
-      # `actions/checkout` does not fetch tags unless asked. Deciding again here,
-      # against the repository, cannot be fooled by how this clone was made.
-      - name: Create and push tag
-        if: needs.verify.outputs.tag_exists == 'false'
-        run: |
-          TAG="${{ needs.verify.outputs.tag }}"
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "ℹ️  Tag $TAG is already on the remote — leaving it as is."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Release $TAG" "$SHA"
-          git push origin "$TAG"
+            # Anyone can check where an asset was built: `gh attestation verify
+            # orbinum-verify.wasm -R orbinum/ts-protocol`.
+            - name: Attest the release assets
+              uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+              with:
+                  subject-path: |
+                      release/*.tar.gz
+                      release/*.wasm
 
-      # Idempotent by design: the action updates an existing release rather than
-      # failing, so a retry refreshes the assets and moves on to the publish.
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
-        with:
-          tag_name: ${{ needs.verify.outputs.tag }}
-          target_commitish: ${{ env.SHA }}
-          name: Release ${{ needs.verify.outputs.tag }}
-          files: |
-            release/*.tar.gz
-            release/*.txt
-          body_path: release_notes.md
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            - name: Create release notes
+              run: |
+                  # The section for the version being released, by exact heading —
+                  # matching "the first ## [" instead would pick up [Unreleased] and
+                  # ship unreleased work as the release notes.
+                  awk -v tag="## [${{ needs.verify.outputs.version }}]" '
+                    index($0, tag) == 1  { flag = 1; next }
+                    flag && /^## \[/     { exit }
+                    flag && /^\[[^]]+\]:/{ exit }   # link definitions end the section
+                    flag
+                  ' CHANGELOG.md > release_notes_body.md
 
-      # Last, and only here: a failed publish leaves a tag and a GitHub release
-      # that can be retried, whereas a published version can never be replaced.
-      #
-      # `actions/setup-node` writes an .npmrc under RUNNER_TEMP holding
-      # `_authToken=${NODE_AUTH_TOKEN}` and points NPM_CONFIG_USERCONFIG at it,
-      # so the variable below is read at publish time. Nothing else needs
-      # setting up — writing the token elsewhere edits a file not in use.
-      #
-      # If this fails with ENEEDAUTH, check that the NPM_TOKEN secret exists in
-      # THIS repository before suspecting the mechanism: secrets do not follow a
-      # repo rename or a fresh remote, and an unset secret expands to an empty
-      # string rather than erroring.
-      - name: Publish to npm
-        run: |
-          pnpm publish --no-git-checks --access public --provenance
-          echo "✅ Published @orbinum/protocol@${{ needs.verify.outputs.version }} to npm"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  {
+                    echo "## ${{ needs.verify.outputs.tag }}"
+                    echo ""
+                    if [ -s release_notes_body.md ]; then
+                      cat release_notes_body.md
+                    else
+                      echo "- Release generated from CI."
+                    fi
+                    echo ""
+                    echo "## Install"
+                    echo ""
+                    echo '```sh'
+                    echo "pnpm add @orbinum/protocol@${{ needs.verify.outputs.version }}"
+                    echo '```'
+                    echo ""
+                    echo "## Release Assets"
+                    echo ""
+                    echo "- \`orbinum-protocol-${{ needs.verify.outputs.tag }}.tar.gz\` — compiled dist (ESM + CJS + types)"
+                    echo "- \`orbinum-verify.wasm\` — payment-proof check as a WASI command, for backends not on Node (JSON on stdin and stdout)"
+                    echo "- \`checksums-${{ needs.verify.outputs.tag }}.txt\` — SHA-256 checksums"
+                  } > release_notes.md
+
+            # Tags the commit only if the tag is not already there, so a retry after a
+            # failed publish gets past this instead of dying on `tag already exists`.
+            #
+            # The `if:` above is the fast path; the check below is what makes the step
+            # correct. They are not redundant: `tag_exists` is computed in another job,
+            # on another checkout, and the first attempt at this got it wrong because
+            # `actions/checkout` does not fetch tags unless asked. Deciding again here,
+            # against the repository, cannot be fooled by how this clone was made.
+            - name: Create and push tag
+              if: needs.verify.outputs.tag_exists == 'false'
+              run: |
+                  TAG="${{ needs.verify.outputs.tag }}"
+                  if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+                    echo "ℹ️  Tag $TAG is already on the remote — leaving it as is."
+                    exit 0
+                  fi
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git tag -a "$TAG" -m "Release $TAG" "$SHA"
+                  git push origin "$TAG"
+
+            # Idempotent by design: the action updates an existing release rather than
+            # failing, so a retry refreshes the assets and moves on to the publish.
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
+              with:
+                  tag_name: ${{ needs.verify.outputs.tag }}
+                  target_commitish: ${{ env.SHA }}
+                  name: Release ${{ needs.verify.outputs.tag }}
+                  files: |
+                      release/*.tar.gz
+                      release/*.wasm
+                      release/*.txt
+                  body_path: release_notes.md
+                  draft: false
+                  prerelease: false
+                  fail_on_unmatched_files: true
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            # Last, and only here: a failed publish leaves a tag and a GitHub release
+            # that can be retried, whereas a published version can never be replaced.
+            #
+            # `actions/setup-node` writes an .npmrc under RUNNER_TEMP holding
+            # `_authToken=${NODE_AUTH_TOKEN}` and points NPM_CONFIG_USERCONFIG at it,
+            # so the variable below is read at publish time. Nothing else needs
+            # setting up — writing the token elsewhere edits a file not in use.
+            #
+            # If this fails with ENEEDAUTH, check that the NPM_TOKEN secret exists in
+            # THIS repository before suspecting the mechanism: secrets do not follow a
+            # repo rename or a fresh remote, and an unset secret expands to an empty
+            # string rather than erroring.
+            - name: Publish to npm
+              run: |
+                  pnpm publish --no-git-checks --access public --provenance
+                  echo "✅ Published @orbinum/protocol@${{ needs.verify.outputs.version }} to npm"
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -7,6 +7,7 @@ export type {
     ShieldBatchItem,
     ShieldBatchParams,
     ClaimFeesParams,
+    BoundSpendParams,
 } from './params';
 export type {
     ShieldedEvent,
@@ -20,6 +21,8 @@ export type {
     AssetUnverifiedEvent,
     FeeCreditedEvent,
     FeesClaimedEvent,
+    BoundSpentEvent,
+    NoteMintedEvent,
     ShieldedPoolEvent,
 } from './events';
 export type {

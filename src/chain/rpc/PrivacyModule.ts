@@ -14,6 +14,8 @@ import type {
 import { mapAssetBalance } from './helpers';
 import { withBusyRetry } from './busy';
 import { parseSubtreeRoots } from './subtreeRoots';
+import { commitmentLeafIndexKey, decodeLeafIndex } from './finalizedLeaf';
+import { isHexOfLength } from '../../foundation/encoding/hex';
 
 /**
  * Typed client for the Orbinum `rpc-v2` endpoints under the `privacy_*` namespace.
@@ -54,6 +56,26 @@ export class PrivacyModule {
      * under the **same block hash**, guaranteeing that the returned path is
      * consistent with the returned root.
      */
+    /**
+     * The commitment's leaf index in the FINALIZED chain, or null when the
+     * finalized state does not hold it (never paid, or its block is not final
+     * yet). `getMerkleProofByCommitment` answers from the best block instead,
+     * which a reorganisation can still revert. See `finalizedLeaf.ts`.
+     */
+    async getFinalizedLeafIndex(commitmentHex: string): Promise<number | null> {
+        const key = commitmentLeafIndexKey(commitmentHex);
+        const finalized = await withBusyRetry(() =>
+            this.substrate.request<string>('chain_getFinalizedHead', [])
+        );
+        if (!isHexOfLength(finalized, 32)) {
+            throw new Error('finalized lookup: the node returned a malformed finalized head');
+        }
+        const raw = await withBusyRetry(() =>
+            this.substrate.request<string | null>('state_getStorage', [key, finalized])
+        );
+        return decodeLeafIndex(raw);
+    }
+
     async getMerkleProofByCommitment(commitmentHex: string): Promise<PrivacyMerkleProof> {
         const raw = await withBusyRetry(() =>
             this.substrate.request<RawRpcV2MerkleProof>('privacy_getMerkleProofByCommitment', [

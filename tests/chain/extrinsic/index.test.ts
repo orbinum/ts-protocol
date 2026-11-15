@@ -195,6 +195,17 @@ describe('mapExtrinsicArgs — shieldedPool', () => {
         });
     });
 
+    it('maps bound_spend with its action and no recipient', () => {
+        const action = { PrivateStaking: { Enter: { pool_id: 3 } } };
+        const result = mapExtrinsicArgs(
+            'shieldedPool',
+            'bound_spend',
+            positional('0xproof', '0xroot', '0xnull', 0, '999', '10', '0xchg', '0x', 3, action)
+        );
+        expect(result).toMatchObject({ amount: '999', fee: '10', circuit_version: 3, action });
+        expect(result).not.toHaveProperty('recipient');
+    });
+
     it('maps claim_fees', () => {
         expect(mapExtrinsicArgs('shieldedPool', 'claim_fees', positional(0, '4000'))).toEqual({
             asset_id: 0,
@@ -352,6 +363,30 @@ describe('mapZkEventData — shielded', () => {
         expect(result['change_commitment']).toBe('0xchange');
         expect(result['change_memo']).toBe('0xmemo');
         expect(result['change_index']).toBe(7);
+    });
+
+    it('maps boundSpent event with its executor and change note', () => {
+        const result = mapZkEventData(
+            'BoundSpent',
+            positional('0xnull', 3, '2000000000000000000', '0xexec', '0xchange', '0xmemo', 9)
+        );
+        expect(result).toMatchObject({
+            nullifier: '0xnull',
+            asset_id: 3,
+            executor: '0xexec',
+            change_commitment: '0xchange',
+            change_memo: '0xmemo',
+            change_index: 9,
+        });
+    });
+
+    it('maps noteMinted event', () => {
+        expect(
+            mapZkEventData(
+                'NoteMinted',
+                named({ commitment: '0xc', asset_id: 3, value: '5', leaf_index: 4 })
+            )
+        ).toEqual({ commitment: '0xc', asset_id: 3, value: '5', index: 4 });
     });
 
     it('maps treeSealed event', () => {

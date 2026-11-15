@@ -4,7 +4,10 @@ import { verifyPayment, type NoteTreeLookup } from '../../../../src/protocol/pay
 import { isMissingCommitment } from '../../../../src/protocol/payment/verify';
 import { KEY, vector } from '../vectors';
 
-const landed: NoteTreeLookup = { getMerkleProofByCommitment: async () => ({ leafIndex: 41 }) };
+const landed: NoteTreeLookup = {
+    getFinalizedLeafIndex: async () => 41,
+    getMerkleProofByCommitment: async () => ({ leafIndex: 41 }),
+};
 const expected = { value: 4200n, assetId: 0n };
 const slip = vector('anonymous').slip;
 
@@ -21,18 +24,14 @@ describe('verifyPayment', () => {
         });
     });
 
-    it('reports wrong asset, wrong amount and not-for-you with the read payment', async () => {
+    it('reports wrong asset, wrong amount and not-for-you without the read payment', async () => {
         expect(
             await verifyPayment(slip, {
                 key: KEY,
                 tree: landed,
                 expected: { ...expected, assetId: 7n },
             })
-        ).toMatchObject({
-            ok: false,
-            reason: 'wrong-asset',
-            payment: { value: 4200n },
-        });
+        ).toEqual({ ok: false, reason: 'wrong-asset' });
         expect(
             await verifyPayment(slip, {
                 key: KEY,

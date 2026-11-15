@@ -56,11 +56,31 @@ export function fastMulBase(scalar: bigint): AffinePoint {
     return [x, y];
 }
 
-/** Variable-point multiplication — one-shot unsafe path. */
+/**
+ * Variable-point multiplication — one-shot unsafe path: its timing depends on
+ * the scalar. Only for PUBLIC scalars; a secret one goes through
+ * `secretMulPoint`.
+ */
 export function fastMulPoint(point: AffinePoint, scalar: bigint): AffinePoint {
     const s = scalar % N;
     if (s === 0n) return [0n, 1n];
     const { x, y } = BjjPoint.fromAffine({ x: point[0], y: point[1] }).multiplyUnsafe(s).toAffine();
+    return [x, y];
+}
+
+/**
+ * Variable-point multiplication by a SECRET scalar (a viewing secret key, a
+ * fresh ephemeral): no branch or table access depends on the scalar's bits,
+ * unlike `fastMulPoint`. Where it matters: a server opening slips that callers
+ * submit multiplies its viewing key by points they chose, and a scalar-dependent
+ * running time would let them measure it. JS BigInt arithmetic is itself not
+ * constant-time, so this removes the algorithmic leak, not every timing
+ * difference.
+ */
+export function secretMulPoint(point: AffinePoint, scalar: bigint): AffinePoint {
+    const s = scalar % N;
+    if (s === 0n) return [0n, 1n];
+    const { x, y } = BjjPoint.fromAffine({ x: point[0], y: point[1] }).multiply(s).toAffine();
     return [x, y];
 }
 

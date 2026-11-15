@@ -33,7 +33,7 @@
  * produce or read is not a shareable format.
  */
 
-import { poseidon4 } from 'poseidon-lite';
+import { poseidon4 } from 'poseidon-lite/poseidon4';
 import { base64UrlEncode, base64UrlDecode } from '../../foundation/encoding/base64url';
 import { BN254_R } from '../../foundation/crypto/constants';
 

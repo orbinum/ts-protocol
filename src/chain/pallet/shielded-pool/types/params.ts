@@ -1,3 +1,4 @@
+import type { BoundAction } from '../../../../protocol/bound/index';
 /**
  * The argument shapes the `shieldedPool` pallet's extrinsics accept.
  *
@@ -39,6 +40,15 @@ export type ShieldParams = {
  */
 
 /** Parameters for shieldedPool.unshield — withdraws from the pool to a clear address. */
+/**
+ * `ShieldedPool.bound_spend`: an unshield whose recipient is the action's executor and
+ * whose proof's `memo_hash` is `boundSpendDigest(genesis, action, changeEncryptedMemo)`.
+ */
+export type BoundSpendParams = Omit<UnshieldParams, 'recipientAddress'> & {
+    /** The action the proof commits to. */
+    action: BoundAction;
+};
+
 export type UnshieldParams = {
     /** ZK proof bytes */
     proof: Uint8Array;

@@ -7,10 +7,12 @@ export {
     classifyChainError,
     palletErrorKind,
     extractPoolRejection,
+    POOL_REJECTIONS,
+    poolRejectionName,
     poolRejectionKind,
     KNOWN_PALLET_ERRORS,
 } from './errors';
-export type { PalletErrorKind } from './errors';
+export type { PalletErrorKind, PoolRejection } from './errors';
 export {
     MIN_SPEND_FEE,
     TRANSFER_INPUTS,

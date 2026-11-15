@@ -8,7 +8,11 @@
  */
 
 const PALLET = 'ShieldedPool';
-const UNSIGNED_ONLY_CALLS: ReadonlySet<unknown> = new Set(['private_transfer', 'unshield']);
+const UNSIGNED_ONLY_CALLS: ReadonlySet<unknown> = new Set([
+    'private_transfer',
+    'unshield',
+    'bound_spend',
+]);
 
 /** Nesting followed into wrapper calls (batch, proxy, …) before giving up. */
 const MAX_DEPTH = 16;
@@ -35,7 +39,7 @@ export function isOrWrapsUnsignedOnlyCall(call: unknown, depth = 0): boolean {
 export function assertNotSignedSpend(tx: { decodedCall: unknown }): void {
     if (isOrWrapsUnsignedOnlyCall(tx.decodedCall)) {
         throw new Error(
-            'Refusing to sign a shielded-pool spend: private_transfer and unshield are ' +
+            'Refusing to sign a shielded-pool spend: private_transfer, unshield and bound_spend are ' +
                 'submitted unsigned, and a signature would tie the account to its nullifiers'
         );
     }

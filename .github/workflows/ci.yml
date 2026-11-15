@@ -50,10 +50,12 @@ jobs:
 
             # The WASI module for backends not on Node (`orbinum-verify.wasm`): built
             # here so the test below runs it against the vectors instead of skipping.
+            # Its own step: the script adds Javy to GITHUB_PATH, which only later steps see.
+            - name: Install Javy
+              run: sh scripts/install-javy.sh
+
             - name: Build WASM
-              run: |
-                sh scripts/install-javy.sh
-                pnpm build:wasm
+              run: pnpm build:wasm
 
             - name: Test
               run: pnpm test

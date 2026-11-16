@@ -26,6 +26,7 @@ export {
     TAG_ED25519_TEXT,
     TAG_ED25519_WRAPPED_TEXT,
     eip191Message,
+    parseTransactionText,
     textMessage,
     wrapBytes,
 } from './message';
@@ -48,5 +49,7 @@ export {
     textHashFingerprint,
     isTextSignable,
     summaryLines,
+    shieldTextLines,
+    formatPercent,
 } from './summary';
 export type { CallName } from './summary';

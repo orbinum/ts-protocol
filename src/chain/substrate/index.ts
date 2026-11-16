@@ -40,12 +40,7 @@ export { getSs58AddressInfo } from 'polkadot-api';
 export type { SignerTxCreator as SubstrateSigner } from 'polkadot-api/tx-creator';
 
 // ─── Signers ─────────────────────────────────────────────────────────────────
-/** Discovering a browser wallet, guarded for hosts that have no page. */
-export {
-    hasInjectedExtensions,
-    getInjectedExtensions,
-    connectInjectedExtension,
-} from './injectedExtensions';
+// Browser wallet extensions are `@orbinum/protocol/browser`.
 
 /**
  * From a raw keypair — servers, tests, and any host with no extension.
@@ -55,12 +50,12 @@ export {
  * creates the transaction rather than only signing it.
  */
 export { getTxCreator as getSubstrateSigner } from 'polkadot-api/tx-creator';
-/** From a browser wallet extension. Pair with `hasInjectedExtensions()`. */
-export { getTxCreatorFromPjs as getSubstrateSignerFromExtension } from 'polkadot-api/pjs-signer';
-export type { SignPayload, SignRaw } from 'polkadot-api/pjs-signer';
 /**
  * An ed25519 account's signer: it signs the readable transaction text, the only ed25519
  * signature the runtime accepts. Extension accounts from `connectInjectedExtension`
  * already carry one; a keypair host builds it with its own `sign`.
  */
 export * from './ed25519Text/index';
+
+/** Block authorship and time, from raw block bytes. */
+export { auraSlot, authorFromSlot, timestampFromExtrinsics } from './blockInfo';

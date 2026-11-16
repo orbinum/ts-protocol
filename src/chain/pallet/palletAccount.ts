@@ -2,7 +2,7 @@
  * A pallet's keyless sub-account, as `PalletId::into_sub_account_truncating(seed)`:
  * `"modl" ‖ pallet_id (8 bytes) ‖ SCALE(seed)`, zero-padded to 32 bytes.
  */
-import { addressToAccountIdHex } from '../../foundation/address';
+import { accountIdHexToSs58, addressToAccountIdHex } from '../../foundation/address';
 import { fromHex, toHex } from '../../foundation/encoding/hex';
 
 const MODL = new TextEncoder().encode('modl');
@@ -22,6 +22,11 @@ export function palletSubAccountId(palletId: string | Uint8Array, seed: Uint8Arr
     bytes.set(palletIdBytes(palletId), 4);
     bytes.set(seed, 12);
     return toHex(bytes);
+}
+
+/** The pallet's own account, as `PalletId::into_account_truncating`: no seed. */
+export function palletAccountId(palletId: string | Uint8Array): string {
+    return palletSubAccountId(palletId, new Uint8Array());
 }
 
 /**
@@ -44,3 +49,31 @@ export function palletSubAccountSeed(
     if (bytes.subarray(12 + seedLength).some((b) => b !== 0)) return null;
     return bytes.slice(12, 12 + seedLength);
 }
+
+/**
+ * Every `PalletId` the runtime declares, by what it is (`configs/**`, `economy/accounts.rs`).
+ * A pallet's own account is `palletAccountId(id)`.
+ */
+export const ORBINUM_PALLET_IDS = {
+    shieldedPool: 'shld/pol',
+    ismpTreasury: 'orb/ismp',
+    ismpMessaging: 'orb/msgs',
+    governance: 'py/trsry',
+    eraFeePool: 'orb/feep',
+    autoPayout: 'orb/apay',
+    eraPruning: 'orb/prun',
+    stakingPot: 'orb/stpt',
+    nominationPools: 'orb/pool',
+    delegatedStaking: 'orb/dlst',
+    privateStaking: 'orb/pstk',
+} as const;
+
+/** The shielded pool's account: it holds every shielded balance. */
+export const SHIELDED_POOL_ACCOUNT = accountIdHexToSs58(
+    palletAccountId(ORBINUM_PALLET_IDS.shieldedPool)
+) as string;
+
+/** The ISMP treasury account: relayer fees collect here. */
+export const ISMP_TREASURY_ACCOUNT = accountIdHexToSs58(
+    palletAccountId(ORBINUM_PALLET_IDS.ismpTreasury)
+) as string;

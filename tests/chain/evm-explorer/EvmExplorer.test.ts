@@ -95,3 +95,16 @@ describe('EvmExplorer — bounded scans and validated holders', () => {
         );
     });
 });
+
+describe('EvmExplorer.getBalance', () => {
+    it('returns the balance in wei, unformatted, and 0n on error', async () => {
+        const ok = new EvmExplorer({ getBalance: async () => 5n * 10n ** 18n } as never);
+        expect(await ok.getBalance('0xabc')).toBe(5n * 10n ** 18n);
+        const failing = new EvmExplorer({
+            getBalance: async () => {
+                throw new Error('down');
+            },
+        } as never);
+        expect(await failing.getBalance('0xabc')).toBe(0n);
+    });
+});

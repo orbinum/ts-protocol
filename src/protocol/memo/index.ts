@@ -7,7 +7,7 @@
  * Sealing a note into a memo and opening one are custody (they derive keys from
  * a shared secret), so they live in the wallet, not here.
  */
-export { MemoFormat, ENCRYPTED_MEMO_SIZE, bytesToBjjScalar } from './memoFormat';
+export { ENCRYPTED_MEMO_SIZE } from './memoFormat';
 
 // The public input that binds memos to a transfer / unshield proof.
 export { memoHash } from './memoHash';

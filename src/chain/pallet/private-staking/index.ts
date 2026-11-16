@@ -4,6 +4,7 @@ export {
     privateMemberAccountId,
     privateMemberAddress,
     privateMemberPoolId,
+    privateShareAssetMetadata,
 } from './account';
 export { privateMinFeeShares, privateShareValue, privateSharesFor } from './pricing';
 export { privateExitRefusal, privateExitValue } from './redeem';

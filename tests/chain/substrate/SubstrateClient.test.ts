@@ -35,7 +35,7 @@ vi.mock('@polkadot-api/substrate-bindings', () => ({
 import { createClient } from 'polkadot-api';
 import { getWsProvider } from 'polkadot-api/ws';
 import { getDynamicBuilder, getLookupFn } from '@polkadot-api/metadata-builders';
-import { decAnyMetadata, unifyMetadata, AccountId } from '@polkadot-api/substrate-bindings';
+import { decAnyMetadata, unifyMetadata } from '@polkadot-api/substrate-bindings';
 import type { EventRecord } from '../../../src/chain/substrate/types/index';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1185,133 +1185,6 @@ describe('SubstrateClient.getBlock', () => {
 });
 
 // ─── SubstrateClient.extractAuthorFromLogs ────────────────────────────────────
-
-/**
- * Builds a PreRuntime digest log (tag byte = 6) with an optional SCALE-compact
- * length mode and a 32-byte public key payload.
- *
- * mode 0 → single-byte compact: (len << 2) | 0
- * mode 1 → two-byte compact:    [(len << 2) | 1, 0]
- * mode 2 → four-byte compact:   [(len << 2) | 2, 0, 0, 0]
- */
-function makePreRuntimeLog(pubkeyByte = 0xaa, mode: 0 | 1 | 2 = 0): string {
-    const key = new Uint8Array(32).fill(pubkeyByte);
-    let lenBytes: number[];
-    if (mode === 0) {
-        // (32 << 2) | 0 = 128 = 0x80
-        lenBytes = [0x80];
-    } else if (mode === 1) {
-        // (32 << 2) | 1 = 0x81; second byte = 0x00 → (0x81 >> 2) | (0 << 6) = 32
-        lenBytes = [0x81, 0x00];
-    } else {
-        // (32 << 2) | 2 = 0x82; rest bytes = 0 → (0x82 >> 2) | ... = 32
-        lenBytes = [0x82, 0x00, 0x00, 0x00];
-    }
-    // [tag=6, engine_id='aura' (4 bytes), ...lenBytes, ...32-byte pubkey]
-    const buf = new Uint8Array([6, 0x61, 0x75, 0x72, 0x61, ...lenBytes, ...key]);
-    return (
-        '0x' +
-        Array.from(buf)
-            .map((b) => b.toString(16).padStart(2, '0'))
-            .join('')
-    );
-}
-
-describe('SubstrateClient.extractAuthorFromLogs', () => {
-    it('returns null for empty logs array', () => {
-        expect(SubstrateClient.extractAuthorFromLogs([], 42)).toBeNull();
-    });
-
-    it('skips logs whose tag byte is not 6 (PreRuntime)', () => {
-        // tag = 0x02 (Seal), not PreRuntime
-        const nonPR = '0x' + '02' + '61757261' + '80' + 'aa'.repeat(32);
-        expect(SubstrateClient.extractAuthorFromLogs([nonPR], 42)).toBeNull();
-    });
-
-    it('returns null for a log shorter than 6 bytes', () => {
-        const shortLog = '0x060102'; // tag=6 but only 3 bytes
-        expect(SubstrateClient.extractAuthorFromLogs([shortLog], 42)).toBeNull();
-    });
-
-    it('decodes mode-0 compact length and returns SS58 address via AccountId', () => {
-        vi.mocked(AccountId).mockReturnValueOnce({
-            dec: vi.fn().mockReturnValue('5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'),
-        } as never);
-        const log = makePreRuntimeLog(0xaa, 0);
-        const result = SubstrateClient.extractAuthorFromLogs([log], 42);
-        expect(result).toBe('5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY');
-        expect(vi.mocked(AccountId)).toHaveBeenCalledWith(42);
-    });
-
-    it('decodes mode-1 compact length', () => {
-        vi.mocked(AccountId).mockReturnValueOnce({
-            dec: vi.fn().mockReturnValue('5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty'),
-        } as never);
-        const log = makePreRuntimeLog(0xbb, 1);
-        expect(SubstrateClient.extractAuthorFromLogs([log], 42)).toBe(
-            '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty'
-        );
-    });
-
-    it('decodes mode-2 compact length', () => {
-        vi.mocked(AccountId).mockReturnValueOnce({
-            dec: vi.fn().mockReturnValue('5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy'),
-        } as never);
-        const log = makePreRuntimeLog(0xcc, 2);
-        expect(SubstrateClient.extractAuthorFromLogs([log], 42)).toBe(
-            '5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy'
-        );
-    });
-
-    it('falls back to toHex when AccountId.dec throws', () => {
-        vi.mocked(AccountId).mockReturnValueOnce({
-            dec: vi.fn().mockImplementation(() => {
-                throw new Error('invalid key');
-            }),
-        } as never);
-        const log = makePreRuntimeLog(0xaa, 0);
-        const result = SubstrateClient.extractAuthorFromLogs([log], 42);
-        // Should be a 0x-prefixed hex string of the 32-byte payload
-        expect(result).toMatch(/^0x[0-9a-f]{64}$/);
-    });
-
-    it('returns null when payload is shorter than 32 bytes', () => {
-        // compact mode-0 with len=8: (8 << 2) | 0 = 0x20
-        const buf = new Uint8Array([
-            6,
-            0x61,
-            0x75,
-            0x72,
-            0x61,
-            0x20,
-            ...new Uint8Array(8).fill(0x01),
-        ]);
-        const hex =
-            '0x' +
-            Array.from(buf)
-                .map((b) => b.toString(16).padStart(2, '0'))
-                .join('');
-        expect(SubstrateClient.extractAuthorFromLogs([hex], 42)).toBeNull();
-    });
-
-    it('returns null for malformed hex without throwing', () => {
-        expect(() => SubstrateClient.extractAuthorFromLogs(['not-valid-hex'], 42)).not.toThrow();
-        expect(SubstrateClient.extractAuthorFromLogs(['not-valid-hex'], 42)).toBeNull();
-    });
-
-    it('skips non-PreRuntime logs and returns from the first valid PreRuntime', () => {
-        vi.mocked(AccountId).mockReturnValueOnce({
-            dec: vi.fn().mockReturnValue('5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'),
-        } as never);
-        const nonPR = '0x' + '02' + '61757261' + '80' + 'aa'.repeat(32);
-        const pr = makePreRuntimeLog(0xaa, 0);
-        expect(SubstrateClient.extractAuthorFromLogs([nonPR, pr], 42)).toBe(
-            '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY'
-        );
-    });
-});
-
-// ─── connect() — cleanup on failure ──────────────────────────────────────────
 
 describe('SubstrateClient.connect — cleanup on failure', () => {
     afterEach(() => {

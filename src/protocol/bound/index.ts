@@ -4,5 +4,5 @@
  * proof's `memo_hash`.
  */
 export type { BoundAction, FieldKey, PrivateStakingAction } from './types';
-export { boundActionArg, encodeBoundAction } from './codec';
+export { boundActionArg, decodeBoundAction, encodeBoundAction } from './codec';
 export { BOUND_SPEND_DOMAIN, boundSpendDigest } from './digest';

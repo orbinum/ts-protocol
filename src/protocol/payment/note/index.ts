@@ -12,12 +12,8 @@ import { bytesToBigintLE } from '../../../foundation/encoding/bytes';
 import { noteCommitment } from '../commitment';
 import { memoViewTagMatches, openMemo } from '../memo';
 import { isOwnedBy } from '../owner';
-import {
-    decodeSenderClaim,
-    privacyAddressOf,
-    senderAddressClaim,
-    type PaymentSender,
-} from '../sender';
+import { decodeSenderClaim, senderAddressClaim, type PaymentSender } from '../sender';
+import { encodePrivacyAddress } from '../address';
 
 /** What a consistent note says: its amount and who sent it. */
 export interface OpenedNote {
@@ -70,7 +66,7 @@ export function openNote(note: NoteToOpen): OpenedNote | null {
         assetId,
         sender: {
             kind: 'address',
-            address: privacyAddressOf(claim.ownerPk, claim.viewingPublicKey),
+            address: encodePrivacyAddress(claim.ownerPk, claim.viewingPublicKey),
         },
     };
 }

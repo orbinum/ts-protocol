@@ -85,6 +85,23 @@ const yesNo = (flag: boolean) => (flag ? 'yes' : 'no');
 const EVM_ACCOUNT_MARKER = 12;
 
 /**
+ * The lines an ORB shield's text shows: the amount, the commitment's first and last
+ * eight bytes, and the sealed memo's fingerprint. A host that previews the text
+ * before signing shows these same lines.
+ */
+export function shieldTextLines(args: {
+    amount: bigint;
+    commitment: Uint8Array;
+    encryptedMemo: Uint8Array;
+}): [string, string][] {
+    return [
+        ['amount', formatOrb(args.amount)],
+        ['commitment', textFingerprint(args.commitment)],
+        ['memo', textHashFingerprint(args.encryptedMemo)],
+    ];
+}
+
+/**
  * An account: an EVM account as its 20-byte address, the way its owner knows it, any other in full.
  * The lengths differ, so an account sharing an EVM address's first 20 bytes never looks like it.
  */
@@ -390,11 +407,11 @@ function details(call: Uint8Array, { pallet, call: fn }: CallName): Line[] | nul
         case 'ShieldedPool.shield': {
             if (u32.dec(args) !== 0) return null;
             const commitment = U32 + U128;
-            return [
-                ['amount', formatOrb(u128.dec(args.slice(U32)))],
-                ['commitment', textFingerprint(args.slice(commitment, commitment + 32))],
-                ['memo', textHashFingerprint(byteVec(args.slice(commitment + 32)))],
-            ];
+            return shieldTextLines({
+                amount: u128.dec(args.slice(U32)),
+                commitment: args.slice(commitment, commitment + 32),
+                encryptedMemo: byteVec(args.slice(commitment + 32)),
+            });
         }
         case 'ShieldedPool.claim_fees':
             return u32.dec(args) === 0 ? [['amount', formatOrb(u128.dec(args.slice(U32)))]] : null;

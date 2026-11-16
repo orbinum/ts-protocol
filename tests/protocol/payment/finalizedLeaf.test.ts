@@ -10,7 +10,7 @@ import {
     COMMITMENT_TO_LEAF_INDEX_PREFIX,
     commitmentLeafIndexKey,
     decodeLeafIndex,
-} from '../../../src/chain/rpc/finalizedLeaf';
+} from '../../../src/protocol/payment/finalizedLeaf';
 import { PrivacyModule } from '../../../src/chain/rpc/PrivacyModule';
 import { fromHex, toHex } from '../../../src';
 

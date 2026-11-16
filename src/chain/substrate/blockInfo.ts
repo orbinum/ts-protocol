@@ -1,9 +1,8 @@
 /**
  * Block fields read straight from raw block bytes: the block time when the
- * `Timestamp.Now` storage read is unavailable, and the author from the digest.
+ * `Timestamp.Now` storage read is unavailable, and the Aura slot the author follows from.
  */
-import { AccountId } from '@polkadot-api/substrate-bindings';
-import { fromHex, toHex } from '../../foundation/encoding/hex';
+import { fromHex } from '../../foundation/encoding/hex';
 
 /**
  * `pallet_timestamp`'s index in the runtime's `construct_runtime!`.
@@ -66,51 +65,29 @@ export function timestampFromExtrinsics(extrinsics: string[]): number | null {
 }
 
 /**
- * Extracts the block author (validator/collator) from raw digest log hex strings.
- * Looks for a PreRuntime log (tag byte = 6) and decodes the first 32 bytes of the
- * SCALE-compact payload as an SS58 address using the given prefix.
+ * The slot of a block, from its Aura `PreRuntime` digest (`06 ‖ "aura" ‖ compact(8) ‖
+ * u64 LE`), or null when absent (the genesis block was not authored).
  *
- * Can be used standalone with raw logs from `chain_getBlock` responses.
+ * Aura carries ONLY the slot: the author is not in the header (unlike Babe, whose
+ * digest names the authority), so it is `authorFromSlot(slot, validators)`.
  */
-export function extractAuthorFromLogs(logs: string[], ss58Prefix: number): string | null {
-    try {
-        for (const hex of logs) {
-            const bytes = fromHex(hex as `0x${string}`);
-            if (bytes.length < 6 || bytes[0] !== 6) continue; // 6 = PreRuntime
-            const firstLenByte = bytes[5] as number;
-            const mode = firstLenByte & 0b11;
-            let payloadStart: number;
-            let payloadLen: number;
-            if (mode === 0) {
-                payloadLen = firstLenByte >> 2;
-                payloadStart = 6;
-            } else if (mode === 1) {
-                if (bytes.length < 7) continue;
-                payloadLen = (firstLenByte >> 2) | ((bytes[6] as number) << 6);
-                payloadStart = 7;
-            } else if (mode === 2) {
-                if (bytes.length < 9) continue;
-                payloadLen =
-                    ((firstLenByte >> 2) |
-                        ((bytes[6] as number) << 6) |
-                        ((bytes[7] as number) << 14) |
-                        ((bytes[8] as number) << 22)) >>>
-                    0;
-                payloadStart = 9;
-            } else {
-                continue;
-            }
-            const payload = bytes.slice(payloadStart, payloadStart + payloadLen);
-            if (payload.length >= 32) {
-                try {
-                    return AccountId(ss58Prefix).dec(payload.slice(0, 32));
-                } catch {
-                    return toHex(payload.slice(0, 32));
-                }
-            }
-        }
-    } catch {
-        /* digest may be empty or malformed */
+export function auraSlot(logs: string[]): bigint | null {
+    for (const log of logs) {
+        const hex = (log.startsWith('0x') ? log.slice(2) : log).toLowerCase();
+        // 06 PreRuntime, 61757261 "aura", 20 compact length 8.
+        if (!hex.startsWith('066175726120') || hex.length < 28) continue;
+        const le = hex.slice(12, 28).match(/../g)!;
+        return BigInt('0x' + le.toReversed().join(''));
     }
     return null;
+}
+
+/**
+ * The validator that authored `slot`: Aura assigns slots round-robin over the session's
+ * validator set (`Session.Validators`, ordered as `Aura.Authorities`). Null when the
+ * slot or the set is unknown: never a wrong attribution.
+ */
+export function authorFromSlot(slot: bigint | null, validators: readonly string[]): string | null {
+    if (slot === null || validators.length === 0) return null;
+    return validators[Number(slot % BigInt(validators.length))] ?? null;
 }

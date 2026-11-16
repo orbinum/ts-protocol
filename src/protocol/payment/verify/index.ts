@@ -14,7 +14,7 @@
  *   - the lookup names the commitment to the node that answers it, and trusts
  *     its answer: use a node you run or trust.
  */
-import { isServerBusyError } from '../../../chain/rpc/busy';
+import { isServerBusyError } from '../../rpcErrors';
 import { readPaymentSlip, type ReceivedPayment } from '../read';
 import type { PaymentViewingKey } from '../viewingKey';
 

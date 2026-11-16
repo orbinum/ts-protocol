@@ -24,7 +24,13 @@ import {
     shieldCallArgs,
     unshieldCallArgs,
 } from './calls/index';
-import { readIsKnownRoot, readMinSpendFee, readPendingFees } from './storage/index';
+import {
+    readIsKnownRoot,
+    readLeaf,
+    readMinSpendFee,
+    readPendingFees,
+    readTreeSize,
+} from './storage/index';
 
 // ─── ShieldedPoolModule ───────────────────────────────────────────────────────
 
@@ -181,5 +187,15 @@ export class ShieldedPoolModule {
         options: { minBlocksLeft?: number | undefined } = {}
     ): Promise<boolean> {
         return readIsKnownRoot(this.substrate, root, options.minBlocksLeft ?? 0);
+    }
+
+    /** How many leaves the commitment tree holds, over every tree. */
+    treeSize(): Promise<number> {
+        return readTreeSize(this.substrate);
+    }
+
+    /** The commitment at leaf `index` (lowercase 0x hex), or null when there is none. */
+    leaf(index: number): Promise<string | null> {
+        return readLeaf(this.substrate, index);
     }
 }

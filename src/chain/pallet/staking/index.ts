@@ -1,6 +1,7 @@
 export { StakingModule } from './StakingModule';
 export { paidAutomatically } from './autoPayout';
 export { OperatorNode, isLoopbackNodeUrl } from './operatorNode';
+export { decodeSessionKeys } from './sessionKeys';
 export {
     CANDIDACY_REJECTIONS,
     candidacyChecklist,

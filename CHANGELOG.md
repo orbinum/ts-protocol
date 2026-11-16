@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-15
+
+`@orbinum/protocol` becomes the one client every Orbinum program shares: the formulas
+a wallet and a verifier must agree on, the accounts, errors and events of every
+pallet, and the decoders the indexer and explorer used to keep their own copies of.
+
+### Added
+
+- **One definition of every verified formula**, previously duplicated byte for byte
+  in `@orbinum/wallet-sdk`: `noteCommitment`, `ownerPkPoint`, `stealthScalar`,
+  `stealthOwnerPk`, `isOwnedBy`, the `sourcePk` wire format (`SENDER_PSEUDONYM_MAX`,
+  `isValidSenderPseudonym`, `encodeSenderPseudonym`, `encodeSenderAddress`,
+  `decodeSenderClaim`, `claimedViewingKey`, `SenderClaim`),
+  `deriveSenderAddressBlinding` / `SenderAuth`, `senderAddressClaim`,
+  `encodePrivacyAddress` / `decodePrivacyAddress`, `memoEncryptionKey`, `memoViewTag`,
+  `memoEphPk`.
+- **Typed refusals:** `ProtocolRefusal` (`call`, `reason`, `detail`) for every
+  pre-flight refusal of Staking, NominationPools and PrivateStaking (messages
+  unchanged), and `protocolRefusal(error)`.
+- **Errors:** `dispatchErrorPath`, `parseModuleError`, `classifyTxError` /
+  `TxErrorKind`, `extractTxHash`, `transactionFeePaid`.
+- **Submission:** `TxResult.fee` (the inclusion's `TransactionFeePaid`) and
+  `SubmitOptions.onSigned(txHash)`.
+- **Accounts:** `ORBINUM_SS58_PREFIX`, `solanaToSs58`, `ss58ToSolana`,
+  `isPalletAccount`, `ORBINUM_PALLET_IDS`, `palletAccountId`, `palletSubAccountId`,
+  `SHIELDED_POOL_ACCOUNT`, `ISMP_TREASURY_ACCOUNT`, `privateShareAssetMetadata`.
+- **Runtime event fields:** `EVENT_FIELDS` (every pallet's events and field names,
+  generated from spec 22 metadata by `npm run gen:events`), `EVENT_FIELDS_SPEC`,
+  `eventFieldNames` and the types `RuntimePallet`, `RuntimeEvent`, `EventFieldName`,
+  `EventFields`: a consumer reading a field the runtime does not declare fails to
+  compile.
+- **Decoders:** `auraSlot` / `authorFromSlot`, `timestampFromExtrinsics`,
+  `decodeBoundAction`, `decodeShieldBatchOperation`, `insertedLeaves` (moved from
+  wallet-sdk), `mintedLeaves` / `MintedLeaf` (a block's `NoteMinted` notes),
+  `decodeSessionKeys`, `parseTransactionText`, `shieldTextLines`,
+  `formatPercent`, `POST_REQUEST_HANDLED_TOPIC` / `postRequestHandledRelayer`.
+- **EVM token standards:** `ERC_EVENT_TOPICS`, `ercEventName`, `ERC_SELECTORS`,
+  `decodeAbiString`, `decodeAbiUint`, `encodeAbiUint256`, `encodeAbiAddress`,
+  `decodeTokenTransfers` (ERC-20, ERC-721, ERC-1155 single and batch);
+  `decodePrecompileCalldata` reads Balances `transfer` / `transferKeepAlive`.
+- **Client:** `client.balances` (`BalancesModule`: `account`, `transferKeepAlive`);
+  `ZkVerifierModule.verificationStats` / `allVerificationStats` / `proofSystem`;
+  `ShieldedPoolModule.treeSize` / `leaf`; `poolDepositorMinBond`, `poolUnbondCap`.
+- **Subpaths:** `@orbinum/protocol/browser` and `@orbinum/protocol/internal`.
+
+### Changed (breaking)
+
+- Browser extension helpers left the root: `hasInjectedExtensions`,
+  `getInjectedExtensions`, `connectInjectedExtension`,
+  `getSubstrateSignerFromExtension`, `SignPayload`, `SignRaw` are
+  `@orbinum/protocol/browser`.
+- Curve and memo internals left the root: `fastMulBase`, `fastMulPoint`,
+  `secretMulPoint`, `isInPrimeSubgroup`, `MemoFormat`, `bytesToBjjScalar` are
+  `@orbinum/protocol/internal` (for `@orbinum/wallet-sdk`; no compatibility promise).
+- `mapZkEventData` returns amounts as decoded instead of formatted ORB text, and
+  takes the event's pallet (`mapZkEventData(method, data, section?)`), which tells the
+  two `Executed` events apart.
+- `EvmExplorer.getBalance` returns wei as `bigint`.
+- `decodePaymentAddress` also returns `viewingPublicKey`, and reads upper-case hex
+  fields as the same address, in lower case.
+- `extractAuthorFromLogs` (and `SubstrateClient.extractAuthorFromLogs`) is removed: it
+  read the Babe layout and returned null for every Orbinum block.
+
+### Fixed
+
+- `SubstrateClient.getBlock` names the block author: the session validator its Aura
+  slot falls on.
+- Layers point one way (`foundation → protocol → chain`), enforced by a test:
+  `commitmentLeafIndexKey` and the busy classifier moved down to `protocol/`,
+  `jsonRpcHttp` up to `chain/rpc/`.
+- The sender-address claim multiplies the recipient's viewing key in constant time
+  (`secretMulPoint`).
+
 ## [0.16.0] - 2026-11-15
 
 ### Added

@@ -70,6 +70,7 @@ import type {
     PoolState,
     PoolSummary,
 } from './types/index';
+import { ProtocolRefusal } from '../../refusal';
 
 /**
  * Nomination pools (`pallet-nomination-pools` over `pallet-delegated-staking`):
@@ -144,8 +145,21 @@ export class NominationPoolsModule {
             readMinJoinBond(this.substrate),
             who ? readIsStaker(this.substrate, who) : false,
         ]);
-        if (amount < min) throw new Error(`join.amount: below the ${min} planck minimum`);
-        if (staker) throw new Error('join: the account stakes directly; leave staking first');
+        if (amount < min) {
+            throw new ProtocolRefusal(
+                'join',
+                'BelowMinimumJoin',
+                `join.amount: below the ${min} planck minimum`,
+                { minimum: min }
+            );
+        }
+        if (staker) {
+            throw new ProtocolRefusal(
+                'join',
+                'StakesDirectly',
+                'join: the account stakes directly; leave staking first'
+            );
+        }
     }
 
     /** Bonds more into the signer's pool: from the free balance, or its pending rewards. */
@@ -220,8 +234,24 @@ export class NominationPoolsModule {
             readPool(this.substrate, id),
             readPoolsConfig(this.substrate),
         ]);
-        if (pool) throw new Error('createWithPoolId: PoolIdInUse');
-        if (id > config.lastPoolId) throw new Error('createWithPoolId: InvalidPoolId');
+        if (pool) {
+            throw new ProtocolRefusal(
+                'createWithPoolId',
+                'PoolIdInUse',
+                'createWithPoolId: PoolIdInUse',
+                {
+                    poolId: id,
+                }
+            );
+        }
+        if (id > config.lastPoolId) {
+            throw new ProtocolRefusal(
+                'createWithPoolId',
+                'InvalidPoolId',
+                'createWithPoolId: InvalidPoolId',
+                { poolId: id }
+            );
+        }
         return this.submit('create_with_pool_id', args, signer, options);
     }
 
@@ -257,11 +287,21 @@ export class NominationPoolsModule {
         ]);
         const notValidating = missing.filter((v) => !current.includes(v));
         if (notValidating.length) {
-            throw new Error(`nominate.validators: not a validator: ${notValidating.join(', ')}`);
+            throw new ProtocolRefusal(
+                'nominate',
+                'NotValidator',
+                `nominate.validators: not a validator: ${notValidating.join(', ')}`,
+                { targets: notValidating }
+            );
         }
         const refused = blocked.filter((v) => !current.includes(v));
         if (refused.length) {
-            throw new Error(`nominate.validators: blocks new nominations: ${refused.join(', ')}`);
+            throw new ProtocolRefusal(
+                'nominate',
+                'BlocksNominations',
+                `nominate.validators: blocks new nominations: ${refused.join(', ')}`,
+                { targets: refused }
+            );
         }
         return this.submit('nominate', args, signer, options);
     }
@@ -404,9 +444,13 @@ export class NominationPoolsModule {
         refusal: (ctx: CommissionContext, who: string | null) => CommissionRefusal | null
     ): Promise<void> {
         const ctx = await readCommissionContext(this.substrate, id);
-        if (!ctx) throw new Error(`${where}: no pool ${id}`);
+        if (!ctx) {
+            throw new ProtocolRefusal(where, 'NoSuchPool', `${where}: no pool ${id}`, {
+                poolId: id,
+            });
+        }
         const reason = refusal(ctx, signerAccount(signer));
-        if (reason) throw new Error(`${where}: ${reason}`);
+        if (reason) throw new ProtocolRefusal(where, reason, `${where}: ${reason}`, { poolId: id });
     }
 
     private submit(

@@ -1,5 +1,4 @@
 import { EvmClient } from '../EvmClient';
-import { formatBalance } from '../../../foundation/text/format';
 import { hexToNumber } from '../../../foundation/encoding/hex';
 import { isEvmAddress } from '../../../foundation/address';
 import type {
@@ -268,13 +267,12 @@ export class EvmExplorer {
         };
     }
 
-    /** Returns the native token balance of `address`, formatted as a decimal string (no symbol). */
-    async getBalance(address: string): Promise<string> {
+    /** The native balance of `address` in wei (rendering it is the caller's), or 0n on error. */
+    async getBalance(address: string): Promise<bigint> {
         try {
-            const val = await this.evm.getBalance(address);
-            return formatBalance(val, { showSymbol: false, precision: 18 });
+            return await this.evm.getBalance(address);
         } catch {
-            return '0';
+            return 0n;
         }
     }
 

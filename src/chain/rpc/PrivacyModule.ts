@@ -14,7 +14,7 @@ import type {
 import { mapAssetBalance } from './helpers';
 import { withBusyRetry } from './busy';
 import { parseSubtreeRoots } from './subtreeRoots';
-import { commitmentLeafIndexKey, decodeLeafIndex } from './finalizedLeaf';
+import { commitmentLeafIndexKey, decodeLeafIndex } from '../../protocol/payment/finalizedLeaf';
 import { isHexOfLength } from '../../foundation/encoding/hex';
 
 /**

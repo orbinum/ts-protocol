@@ -1,4 +1,4 @@
-import { MemoFormat } from '../../../../../protocol/memo/index';
+import { MemoFormat } from '../../../../../protocol/memo/memoFormat';
 import type { ShieldParams } from '../../types/params';
 import { assertHash, assertPositiveU128, assertProof, assertU32 } from './primitives';
 

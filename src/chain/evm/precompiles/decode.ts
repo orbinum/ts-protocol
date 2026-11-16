@@ -11,10 +11,11 @@ import { fromHex } from '../../../foundation/encoding/hex';
 import { decodeUint } from './abi';
 
 /**
- * Which shielded-pool operation a precompile call performs. Named rather than
- * left to the caller to derive from `fnSig`.
+ * Which operation a precompile call performs: a shield through the shielded pool, or
+ * an ORB transfer to an AccountId32 through Balances. Named rather than left to the
+ * caller to derive from `fnSig`.
  */
-export type PrecompileMethod = 'shield';
+export type PrecompileMethod = 'shield' | 'transfer' | 'transferKeepAlive';
 
 export type DecodedPrecompile = {
     fnSig: string;
@@ -29,6 +30,8 @@ export type DecodedPrecompile = {
 /** The operation a function signature names, anchored at the start. */
 function methodOf(fnSig: string): PrecompileMethod | null {
     if (fnSig.startsWith('shield(')) return 'shield';
+    if (fnSig.startsWith('transfer(')) return 'transfer';
+    if (fnSig.startsWith('transferKeepAlive(')) return 'transferKeepAlive';
     return null;
 }
 
@@ -76,6 +79,22 @@ export function decodePrecompileCalldata(address: string, input: string): Decode
                     commitment: toHex(data.slice(32, 64)),
                     circuitVersion: decodeUint(data, 128),
                 },
+            };
+        } catch {
+            return { fnSig, method: methodOf(fnSig), args: {} };
+        }
+    }
+
+    // transfer / transferKeepAlive(bytes32 dest, uint256 value) on Balances:
+    // [0-31] the recipient AccountId32 | [32-63] the amount in planck.
+    if (fnSig.startsWith('transfer(') || fnSig.startsWith('transferKeepAlive(')) {
+        try {
+            const data = fromHex(input.slice(10));
+            if (!hasFullHead(data, 2)) return { fnSig, method: methodOf(fnSig), args: {} };
+            return {
+                fnSig,
+                method: methodOf(fnSig),
+                args: { recipient: toHex(data.slice(0, 32)), amount: decodeUint(data, 32) },
             };
         } catch {
             return { fnSig, method: methodOf(fnSig), args: {} };

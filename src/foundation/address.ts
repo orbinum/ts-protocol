@@ -109,7 +109,7 @@ export function implicitSubstrateToEvm(accountHex: string): string {
 
 // ─── SS58 / AccountId utilities (require @polkadot/util-crypto) ──────────────
 
-import { decodeAddress, encodeAddress } from '@polkadot/util-crypto';
+import { base58Decode, base58Encode, decodeAddress, encodeAddress } from '@polkadot/util-crypto';
 
 const ACCOUNT_ID_BYTES = 32;
 const EVM_BYTES = 20;
@@ -189,10 +189,50 @@ export function evmToSubstrate(addr: string): string | null {
     }
     // last 12 bytes remain 0x00 (default)
     try {
-        return encodeAddress(mapped);
+        return encodeAddress(mapped, ORBINUM_SS58_PREFIX);
     } catch {
         return null;
     }
+}
+
+/** Orbinum's SS58 prefix (`SS58Prefix` in the runtime): every account renders with it. */
+export const ORBINUM_SS58_PREFIX = 42;
+
+/**
+ * The SS58 form of a Solana address: the base58 of a 32-byte ed25519 key, which is
+ * the Orbinum account itself (runtime spec 20). Null for anything else; SS58
+ * decodes to 35 or 36 bytes, so the two never overlap.
+ */
+export function solanaToSs58(input: string): string | null {
+    if (typeof input !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(input)) return null;
+    try {
+        const bytes = base58Decode(input);
+        return bytes.length === ACCOUNT_ID_BYTES ? encodeAddress(bytes, ORBINUM_SS58_PREFIX) : null;
+    } catch {
+        return null;
+    }
+}
+
+/** The Solana spelling of an account (SS58 or AccountId32 hex), or null. */
+export function ss58ToSolana(account: string): string | null {
+    const hex = addressToAccountIdHex(account);
+    return hex ? base58Encode(fromHex(hex)) : null;
+}
+
+const MODL = [0x6d, 0x6f, 0x64, 0x6c];
+
+/**
+ * Whether `account` (SS58 or AccountId32 hex) is a pallet's keyless account
+ * (`"modl" ‖ PalletId ‖ …`). Its last 12 bytes are zero like an EVM-mapped account's,
+ * so this is what tells the two apart before mapping one to an EVM address.
+ */
+export function isPalletAccount(account: string): boolean {
+    const hex = /^0x[0-9a-fA-F]{64}$/.test(account)
+        ? account
+        : substrateSs58ToAccountIdHex(account);
+    if (!hex) return false;
+    const bytes = fromHex(hex);
+    return MODL.every((b, i) => bytes[i] === b);
 }
 
 /**
@@ -206,7 +246,7 @@ export function accountIdHexToSs58(hex: string): string | null {
         // `parseInt` would read a non-hex pair as NaN and store it as 0, so a
         // typo would encode to a different, valid account.
         if (!/^[0-9a-fA-F]{64}$/.test(h)) return null;
-        return encodeAddress(fromHex(h));
+        return encodeAddress(fromHex(h), ORBINUM_SS58_PREFIX);
     } catch {
         return null;
     }

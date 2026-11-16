@@ -11,7 +11,7 @@
  * `UnknownMerkleRoot` means "rescan and retry" while phrasing it differently.
  */
 
-import { SERVER_BUSY_TEXT } from '../../rpc/busy';
+import { SERVER_BUSY_TEXT } from '../../../protocol/rpcErrors';
 
 /**
  * The pallet error name inside a raw chain error, or null.

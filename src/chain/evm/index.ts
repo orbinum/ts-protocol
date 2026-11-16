@@ -13,3 +13,4 @@
 export { EvmClient } from './EvmClient';
 export * from './explorer/index';
 export * from './precompiles/index';
+export * from './erc';

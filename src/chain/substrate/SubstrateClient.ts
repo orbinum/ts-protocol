@@ -3,12 +3,12 @@ import type { SignerTxCreator as SubstrateSigner } from 'polkadot-api/tx-creator
 import { getWsProvider } from 'polkadot-api/ws';
 import { guardedMetadataCache, type MetadataCache } from './metadataCache';
 import { fromHex } from '../../foundation/encoding/hex';
-import { jsonRpcBatch, wsUrlToHttp, type JsonRpcCall } from '../../foundation/jsonRpcHttp';
+import { jsonRpcBatch, wsUrlToHttp, type JsonRpcCall } from '../rpc/jsonRpcHttp';
 import type { ChainInfo, SystemHealth, EventRecord, RawBlockHeader, BlockInfo } from './types';
 import type { RawRuntimeVersion } from './types/raw';
 import { RuntimeDecoders, type DynamicBuilder, type ExtrinsicDecoder } from './runtimeDecoders';
 import { toEventRecords } from './eventRecords';
-import { extractAuthorFromLogs, timestampFromExtrinsics } from './blockInfo';
+import { auraSlot, authorFromSlot, timestampFromExtrinsics } from './blockInfo';
 import { assertNotSignedSpend } from '../pallet/shielded-pool/calls/unsignedOnly';
 
 export type { DynamicBuilder, ExtrinsicDecoder } from './runtimeDecoders';
@@ -219,8 +219,8 @@ export class SubstrateClient {
      *
      * Uses `chain_getBlock` (works for all non-pruned blocks, unlike PAPI chainHead
      * which only pins recent blocks). Timestamp is read from `Timestamp.Now` storage
-     * with a fallback via the `timestamp.set` extrinsic argument. Author is decoded
-     * from PreRuntime digest logs using the chain's SS58 prefix.
+     * with a fallback via the `timestamp.set` extrinsic argument. The author is the
+     * session validator the block's Aura slot points to (`Session.Validators` at it).
      *
      * @param hashOrNumber - A `0x`-prefixed block hash or a block number (number or decimal string).
      * @returns `BlockInfo` or `null` if the block is not found.
@@ -237,12 +237,14 @@ export class SubstrateClient {
             const { header, extrinsics } = raw.block;
 
             const builder = await this.getDynamicBuilder().catch(() => null);
-            const ss58Prefix =
-                (builder as unknown as { ss58Prefix?: number } | null)?.ss58Prefix ?? 42;
             const timestampMs =
                 (builder && (await this.readTimestamp(builder, blockHash))) ||
                 timestampFromExtrinsics(extrinsics);
-            const author = extractAuthorFromLogs(header.digest.logs, ss58Prefix);
+            const slot = auraSlot(header.digest.logs);
+            const author =
+                builder && slot !== null
+                    ? authorFromSlot(slot, await this.readSessionValidators(builder, blockHash))
+                    : null;
 
             return { header, extrinsics, timestampMs, author };
         } catch {
@@ -256,6 +258,23 @@ export class SubstrateClient {
         return /^\d+$/.test(hashOrNumber)
             ? this.getBlockHash(parseInt(hashOrNumber, 10))
             : hashOrNumber;
+    }
+
+    /** `Session.Validators` at `blockHash`, or none when the read fails. */
+    private async readSessionValidators(
+        builder: DynamicBuilder,
+        blockHash: string
+    ): Promise<string[]> {
+        try {
+            const store = builder.buildStorage('Session', 'Validators');
+            const raw = await this.request<string | null>('state_getStorage', [
+                store.keys.enc(),
+                blockHash,
+            ]);
+            return raw ? (store.value.dec(fromHex(raw as `0x${string}`)) as string[]) : [];
+        } catch {
+            return [];
+        }
     }
 
     /** `Timestamp.Now` at `blockHash`, or null when the read fails or is empty. */
@@ -408,15 +427,5 @@ export class SubstrateClient {
     /** The extrinsic decoder for the runtime at `blockHash`; see `getDynamicBuilder`. */
     async getExtrinsicDecoder(blockHash?: string): Promise<ExtrinsicDecoder> {
         return this._decoders.extrinsic(blockHash);
-    }
-
-    /**
-     * Extracts the block author (validator/collator) from raw digest log hex
-     * strings: the first 32 bytes of the PreRuntime payload, as an SS58 address.
-     *
-     * Can be used standalone with raw logs from `chain_getBlock` responses.
-     */
-    static extractAuthorFromLogs(logs: string[], ss58Prefix: number): string | null {
-        return extractAuthorFromLogs(logs, ss58Prefix);
     }
 }

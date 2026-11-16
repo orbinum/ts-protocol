@@ -40,13 +40,31 @@ export * from './protocol/index';
 export * from './chain/client/index';
 export * from './chain/substrate/index';
 export * from './chain/rpc/index';
+export * from './chain/runtime/index';
+export { ProtocolRefusal, protocolRefusal } from './chain/refusal';
+export type { RefusalReason, RefusalDetail } from './chain/refusal';
+export {
+    classifyTxError,
+    dispatchErrorPath,
+    extractTxHash,
+    parseModuleError,
+} from './chain/txErrors';
+export type { TxErrorKind } from './chain/txErrors';
+export * from './chain/pallet/balances/index';
 export * from './chain/pallet/shielded-pool/index';
 export * from './chain/pallet/staking/index';
 export * from './chain/pallet/nomination-pools/index';
 export * from './chain/pallet/private-staking/index';
 export * from './chain/pallet/zk-verifier/index';
 export * from './chain/pallet/ismp/index';
-export { toTxResult, feePaidFrom, signAndSubmitTx } from './chain/tx';
+export {
+    ORBINUM_PALLET_IDS,
+    ISMP_TREASURY_ACCOUNT,
+    SHIELDED_POOL_ACCOUNT,
+    palletAccountId,
+    palletSubAccountId,
+} from './chain/pallet/palletAccount';
+export { toTxResult, feePaidFrom, signAndSubmitTx, transactionFeePaid } from './chain/tx';
 export type { UnsafeTx, UnsafeTxOptions, SubmitOptions } from './chain/tx';
 export type { TxFinalizedPayload } from 'polkadot-api';
 
@@ -83,3 +101,15 @@ export type {
     DecodedPrecompile,
     PrecompileMethod,
 } from './chain/evm/precompiles/index';
+// The token standards, shared by every reader of EVM logs (indexer, explorer, wallet).
+export {
+    ERC_EVENT_TOPICS,
+    ERC_SELECTORS,
+    ercEventName,
+    decodeAbiString,
+    decodeAbiUint,
+    encodeAbiAddress,
+    encodeAbiUint256,
+    decodeTokenTransfers,
+} from './chain/evm/erc';
+export type { EvmLogLike, DecodedTokenTransfer } from './chain/evm/erc';

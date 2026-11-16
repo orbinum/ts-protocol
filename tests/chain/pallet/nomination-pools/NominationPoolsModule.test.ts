@@ -629,7 +629,11 @@ describe('NominationPoolsModule commission calls', () => {
         const { module, called } = commissionClient(rated, { globalMax: 15 * PCT, best: 100 });
         const set = (percent: number, signer = alice) =>
             module.setCommission(1, { commission: percent * PCT, payee: CHARLIE }, signer);
-        await expect(set(6, bob)).rejects.toThrow('setCommission: DoesNotHavePermission');
+        await expect(set(6, bob)).rejects.toMatchObject({
+            call: 'setCommission',
+            reason: 'DoesNotHavePermission',
+            detail: { poolId: 1 },
+        });
         // Too soon: 100 + 1 - 95 < 10.
         await expect(set(6)).rejects.toThrow('CommissionChangeThrottled');
         // Too large.

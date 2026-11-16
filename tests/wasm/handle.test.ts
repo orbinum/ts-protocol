@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { handle } from '../../wasm/handle';
-import { commitmentLeafIndexKey } from '../../src/chain/rpc/finalizedLeaf';
+import { commitmentLeafIndexKey } from '../../src/protocol/payment/finalizedLeaf';
 import { ADDRESS, PROOF_VECTORS, proofVector } from '../protocol/payment/vectors';
 
 describe('handle (the module’s answer)', () => {

@@ -8,7 +8,7 @@
  */
 export { BN254_R, BABYJUB_SUBORDER } from './constants';
 export { unpackUsableViewingKey, unpackSubgroupViewingKey } from './bjj';
-export { fastMulBase, fastMulPoint, isInPrimeSubgroup, secretMulPoint } from './bjj-fast';
+// Curve multiplication helpers are `@orbinum/protocol/internal`: the wallet's.
 // The capability guards travel with the error they throw: a host that catches
 // `MissingCryptoError` is the same host that wants to check for the capability
 // before it reaches a failure. They inspect `globalThis.crypto` and touch no

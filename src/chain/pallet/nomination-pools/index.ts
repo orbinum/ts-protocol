@@ -27,3 +27,4 @@ export {
     utf8Length,
 } from './metadata';
 export type * from './types/index';
+export { poolDepositorMinBond, poolUnbondCap } from './rules';

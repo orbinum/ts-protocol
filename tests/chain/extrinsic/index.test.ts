@@ -571,3 +571,24 @@ describe('mapExtrinsicArgs — camelCase decoders', () => {
         });
     });
 });
+
+describe('mapZkEventData returns data, not display', () => {
+    it('keeps amounts as decoded', () => {
+        const shielded = mapZkEventData('Shielded', {
+            depositor: 'x',
+            amount: 5_000_000_000_000_000_000n,
+            commitment: '0x01',
+            encrypted_memo: '0x',
+            leaf_index: 3,
+        });
+        expect(shielded['amount']).toBe(5_000_000_000_000_000_000n);
+    });
+
+    it('tells the two Executed events apart by their pallet', () => {
+        expect(mapZkEventData('Executed', { address: '0xab' }, 'evm')).toEqual({
+            address: '0xab',
+        });
+        const ethereum = { from: '0x1', to: '0x2', transaction_hash: '0x3', exit_reason: 'ok' };
+        expect(mapZkEventData('Executed', ethereum, 'ethereum')).toEqual(ethereum);
+    });
+});

@@ -5,11 +5,11 @@
  * runtime's `PoolsPalletId`; pass the `NominationPools.PalletId` constant to follow it.
  */
 import { accountIdHexToSs58 } from '../../../foundation/address';
-import { palletSubAccountId, palletSubAccountSeed } from '../palletAccount';
+import { ORBINUM_PALLET_IDS, palletSubAccountId, palletSubAccountSeed } from '../palletAccount';
 import { assertU32 } from '../staking/calls/callArgs';
 
 /** The runtime's `PoolsPalletId`. */
-export const POOLS_PALLET_ID = 'orb/pool';
+export const POOLS_PALLET_ID = ORBINUM_PALLET_IDS.nominationPools;
 
 const seed = (type: 0 | 1, poolId: number) => {
     assertU32(poolId, 'pools.poolId');

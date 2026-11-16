@@ -28,3 +28,4 @@ export type {
     IsmpMessagingEvent,
     IsmpEvent,
 } from './events';
+export { POST_REQUEST_HANDLED_TOPIC, postRequestHandledRelayer } from './hostLog';

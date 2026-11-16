@@ -2,6 +2,7 @@ import type { SignerTxCreator as SubstrateSigner } from 'polkadot-api/tx-creator
 import type { SubstrateClient } from '../../substrate/SubstrateClient';
 import type { TxResult } from '../../client/types';
 import { callUnsafeTx, resolveTx, signAndSubmitTx, type SubmitOptions } from '../../tx';
+import { ProtocolRefusal } from '../../refusal';
 import { signerAccount } from '../signerAccount';
 import { assertU32 } from '../staking/calls/callArgs';
 import {
@@ -153,14 +154,26 @@ export class PrivateStakingModule {
             readPool(this.substrate, poolId),
             this.pool(poolId),
         ]);
-        if (!pool) throw new Error(`setPrivate: no pool ${poolId}`);
+        if (!pool) {
+            throw new ProtocolRefusal('setPrivate', 'NoSuchPool', `setPrivate: no pool ${poolId}`, {
+                poolId,
+            });
+        }
         const who = signerAccount(signer);
-        if (who !== null && pool.roles.root !== who) throw new Error('setPrivate: NotRoot');
+        if (who !== null && pool.roles.root !== who) {
+            throw new ProtocolRefusal('setPrivate', 'NotRoot', 'setPrivate: NotRoot', { poolId });
+        }
         // A wound-down private side only pays out until the chain forgets it.
         if (enabled && (pool.state === 'Destroying' || privatePool?.windDown)) {
-            throw new Error('setPrivate: PoolNotOpen');
+            throw new ProtocolRefusal('setPrivate', 'PoolNotOpen', 'setPrivate: PoolNotOpen', {
+                poolId,
+            });
         }
-        if (!enabled && !privatePool) throw new Error('setPrivate: NotPrivate');
+        if (!enabled && !privatePool) {
+            throw new ProtocolRefusal('setPrivate', 'NotPrivate', 'setPrivate: NotPrivate', {
+                poolId,
+            });
+        }
         const entry = resolveTx(this.substrate.unsafe, 'PrivateStaking', 'set_private');
         const tx = callUnsafeTx(entry, { pool_id: poolId, enabled });
         return signAndSubmitTx(tx, signer, options);

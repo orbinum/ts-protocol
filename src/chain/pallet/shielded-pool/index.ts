@@ -1,5 +1,10 @@
 export { ShieldedPoolModule } from './ShieldedPoolModule';
-export { shieldCallArgs, shieldBatchCallArgs, assertNotSignedSpend } from './calls/index';
+export {
+    shieldCallArgs,
+    shieldBatchCallArgs,
+    decodeShieldBatchOperation,
+    assertNotSignedSpend,
+} from './calls/index';
 export {
     extractPalletError,
     isAlreadySpentError,
@@ -21,3 +26,4 @@ export {
     isNativeAsset,
 } from './constants';
 export type * from './types/index';
+export { insertedLeaves, mintedLeaves, type MintedLeaf } from './leaves';

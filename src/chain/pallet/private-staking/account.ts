@@ -5,11 +5,11 @@
  * recipient, so the proof names it.
  */
 import { accountIdHexToSs58 } from '../../../foundation/address';
-import { palletSubAccountId, palletSubAccountSeed } from '../palletAccount';
+import { ORBINUM_PALLET_IDS, palletSubAccountId, palletSubAccountSeed } from '../palletAccount';
 import { assertU32 } from '../staking/calls/callArgs';
 
 /** The runtime's `PrivateStakingId`. */
-export const PRIVATE_STAKING_PALLET_ID = 'orb/pstk';
+export const PRIVATE_STAKING_PALLET_ID = ORBINUM_PALLET_IDS.privateStaking;
 
 const u32le = (n: number) => {
     const bytes = new Uint8Array(4);
@@ -50,4 +50,16 @@ export function privateMemberPoolId(
     if (!seed) return null;
     const poolId = new DataView(seed.buffer, seed.byteOffset).getUint32(0, true);
     return poolId > 0 ? poolId : null;
+}
+
+/**
+ * The share asset the runtime registers for pool `poolId` when its root opens it
+ * (`issue_asset`): `Private stake in pool #N`, symbol `sN`, 18 decimals.
+ */
+export function privateShareAssetMetadata(poolId: number): {
+    name: string;
+    symbol: string;
+    decimals: number;
+} {
+    return { name: `Private stake in pool #${poolId}`, symbol: `s${poolId}`, decimals: 18 };
 }

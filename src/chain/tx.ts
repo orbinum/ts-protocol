@@ -25,6 +25,11 @@ export type UnsafeTxOptions = Record<string, unknown>;
 export type SubmitOptions = UnsafeTxOptions & {
     onBroadcast?: () => void;
     /**
+     * Called once the tx is signed, with its hash: before anything can drop it, so a
+     * host keeps a hash to look the tx up by even if the connection fails afterwards.
+     */
+    onSigned?: (txHash: string) => void;
+    /**
      * `'best'` resolves once the tx is in a best block, with its dispatch result,
      * one finality lag (a few blocks) before `'finalized'`, the default. Read the
      * state it changed at the best block too, or it will look unchanged.
@@ -78,10 +83,12 @@ export function toTxResult(payload: TxFinalizedPayload): TxResult {
         blockNumber: payload.block.number,
         ok: payload.ok,
     };
+    const fee = feePaidFrom(payload);
+    const paid = fee === null ? base : { ...base, fee };
     if (!payload.ok) {
-        return { ...base, error: formatDispatchError(payload.dispatchError) };
+        return { ...paid, error: formatDispatchError(payload.dispatchError) };
     }
-    return base;
+    return paid;
 }
 
 /**
@@ -96,6 +103,27 @@ export function toTxResult(payload: TxFinalizedPayload): TxResult {
  * Returns null when the event is absent, which is the honest answer rather than
  * a zero: an unsigned (gasless) extrinsic pays no fee and never emits it.
  */
+/**
+ * The fee in a `TransactionPayment.TransactionFeePaid { who, actual_fee, tip }` event's
+ * data, as decimal text: by name (`actual_fee`, or `actualFee` from camelCasing
+ * tooling) or by position. Null when absent.
+ */
+export function transactionFeePaid(data: unknown): string | null {
+    const plain =
+        data !== null && typeof data === 'object' && 'toJSON' in data
+            ? (data as { toJSON(): unknown }).toJSON()
+            : data;
+    if (!plain || typeof plain !== 'object') return null;
+    const fee = Array.isArray(plain)
+        ? plain[1]
+        : ((plain as Record<string, unknown>)['actual_fee'] ??
+          (plain as Record<string, unknown>)['actualFee'] ??
+          (plain as Record<string, unknown>)['1']);
+    return typeof fee === 'bigint' || typeof fee === 'number' || typeof fee === 'string'
+        ? String(fee)
+        : null;
+}
+
 export function feePaidFrom(payload: TxFinalizedPayload): string | null {
     const events = (payload as { events?: unknown }).events;
     if (!Array.isArray(events)) return null;
@@ -103,11 +131,7 @@ export function feePaidFrom(payload: TxFinalizedPayload): string | null {
         const ev = record as { type?: string; value?: { type?: string; value?: unknown } };
         if (ev?.type !== 'TransactionPayment') continue;
         if (ev.value?.type !== 'TransactionFeePaid') continue;
-        const data = ev.value.value as { actual_fee?: unknown } | undefined;
-        const fee = data?.actual_fee;
-        if (typeof fee === 'bigint') return fee.toString();
-        if (typeof fee === 'string' || typeof fee === 'number') return String(fee);
-        return null;
+        return transactionFeePaid(ev.value.value);
     }
     return null;
 }
@@ -156,7 +180,7 @@ export function callUnsafeTx(txEntry: unknown, ...args: unknown[]): UnsafeTx {
  * `resolveAt: 'best'`. Refuses a shielded-pool spend (`assertNotSignedSpend`)
  * before the signer sees it.
  *
- * With `onBroadcast` or `resolveAt: 'best'` the tx goes through
+ * With `onBroadcast`, `onSigned` or `resolveAt: 'best'` the tx goes through
  * `createSubmitAndWatch`, whose event stream is the only place the mempool
  * acknowledgement and the best-block inclusion are visible; otherwise the plain
  * promise path is kept, byte-for-byte the behaviour every existing caller had.
@@ -171,11 +195,11 @@ export function signAndSubmitTx(
     } catch (e) {
         return Promise.reject(e);
     }
-    const { onBroadcast, resolveAt, onFinalized, onReorg, ...txOptions } = options ?? {};
+    const { onBroadcast, onSigned, resolveAt, onFinalized, onReorg, ...txOptions } = options ?? {};
     const opts = Object.keys(txOptions).length > 0 ? (txOptions as UnsafeTxOptions) : undefined;
     const atBest = resolveAt === 'best';
 
-    if (!onBroadcast && !atBest) {
+    if (!onBroadcast && !onSigned && !atBest) {
         return (
             opts !== undefined ? tx.createAndSubmit(signer, opts) : tx.createAndSubmit(signer)
         ).then(toTxResult);
@@ -189,6 +213,8 @@ export function signAndSubmitTx(
                 : tx.createSubmitAndWatch(signer);
         stream.subscribe({
             next(event) {
+                if (event.type === 'signed')
+                    onSigned?.((event as unknown as { txHash: string }).txHash);
                 if (event.type === 'broadcasted') onBroadcast?.();
                 // polkadot-api 3 emits `inBestBlock` / `notInBestBlock`; earlier versions
                 // `txBestBlocksState` with `found`.

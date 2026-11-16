@@ -66,4 +66,9 @@ export type TxResult = {
     ok: boolean;
     /** Dispatch error type string. Only present when `ok` is `false`. */
     error?: string;
+    /**
+     * The fee charged, in planck (decimal text), from the inclusion's
+     * `TransactionFeePaid` event. Absent for an unsigned extrinsic, which pays none.
+     */
+    fee?: string;
 };

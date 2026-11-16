@@ -419,3 +419,22 @@ describe('un H160 se rellena por el final', () => {
         expect(hex.slice(40)).toBe('00'.repeat(12));
     });
 });
+
+describe('Solana accounts', () => {
+    const key = new Uint8Array(32).map((_, i) => i + 1);
+    it('a Solana address is the account itself, as SS58', async () => {
+        const { base58Encode, encodeAddress } = await import('@polkadot/util-crypto');
+        const { solanaToSs58, ss58ToSolana } = await import('../../src/foundation/address');
+        const solana = base58Encode(key);
+        expect(solanaToSs58(solana)).toBe(encodeAddress(key, 42));
+        expect(ss58ToSolana(encodeAddress(key, 42))).toBe(solana);
+    });
+
+    it('refuses what is not a 32-byte base58 key', async () => {
+        const { solanaToSs58, ss58ToSolana } = await import('../../src/foundation/address');
+        const { encodeAddress } = await import('@polkadot/util-crypto');
+        expect(solanaToSs58(encodeAddress(key, 42))).toBeNull(); // SS58 decodes to 35 bytes
+        expect(solanaToSs58('0OIl')).toBeNull();
+        expect(ss58ToSolana('nope')).toBeNull();
+    });
+});

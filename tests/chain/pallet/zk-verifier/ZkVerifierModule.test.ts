@@ -51,3 +51,44 @@ describe('ZkVerifierModule', () => {
         expect(all.map((c) => c.circuitId)).toEqual([1, 2]);
     });
 });
+
+describe('ZkVerifierModule storage reads', () => {
+    // Field names as the runtime declares them (`VerificationStatistics`): snake_case.
+    const raw = { total_verifications: 7n, successful_verifications: 6n, failed_verifications: 1n };
+    const module = new ZkVerifierModule({
+        unsafe: {
+            query: {
+                ZkVerifier: {
+                    VerificationStats: {
+                        getValue: async (c: number, v: number) =>
+                            c === 3 && v === 1 ? raw : undefined,
+                        getEntries: async () => [{ keyArgs: [3, 1], value: raw }],
+                    },
+                    VerificationKeys: {
+                        getValue: async () => ({
+                            key_data: '0x',
+                            system: { type: 'Groth16' },
+                            registered_at: 1,
+                        }),
+                    },
+                },
+            },
+        },
+    } as never);
+
+    it('reads a key’s verification counts as numbers', async () => {
+        expect(await module.verificationStats(3, 1)).toEqual({
+            total: 7,
+            successful: 6,
+            failed: 1,
+        });
+        expect(await module.verificationStats(9, 9)).toBeNull();
+        expect(await module.allVerificationStats()).toEqual([
+            { circuitId: 3, version: 1, stats: { total: 7, successful: 6, failed: 1 } },
+        ]);
+    });
+
+    it('reads the proof system a key is for', async () => {
+        expect(await module.proofSystem(3, 1)).toBe('Groth16');
+    });
+});

@@ -19,7 +19,7 @@ import { defineConfig } from 'tsdown';
  * the build depend on `unrun` to transpile itself.
  */
 export default defineConfig({
-    entry: ['src/index.ts'],
+    entry: ['src/index.ts', 'src/browser.ts', 'src/internal.ts'],
     format: ['esm', 'cjs'],
     dts: { sourcemap: false },
     fixedExtension: false,

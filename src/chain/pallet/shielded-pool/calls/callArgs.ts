@@ -7,9 +7,10 @@
  * `shieldBatchCallArgs` are public for that. The spend arguments stay internal
  * — the module submits spends unsigned, and a host has no other way to.
  */
-import { MemoFormat } from '../../../../protocol/memo/index';
+import { MemoFormat } from '../../../../protocol/memo/memoFormat';
 import { boundActionArg } from '../../../../protocol/bound/index';
 import { accountIdHexToSs58 } from '../../../../foundation/address';
+import { toHex } from '../../../../foundation/encoding/hex';
 import type {
     BoundSpendParams,
     ClaimFeesParams,
@@ -57,6 +58,41 @@ export function shieldBatchCallArgs(params: ShieldBatchParams) {
         ] as const;
     });
     return { operations };
+}
+
+/** Bytes as lowercase 0x hex, from hex, bytes or PAPI's `Binary`; null otherwise. */
+function hexOf(v: unknown): string | null {
+    if (typeof v === 'string') return /^0x[0-9a-fA-F]*$/.test(v) ? v.toLowerCase() : null;
+    if (v instanceof Uint8Array) return toHex(v);
+    if (Array.isArray(v) && v.every((b) => Number.isInteger(b))) return toHex(v as number[]);
+    const asHex = (v as { asHex?: () => string } | null)?.asHex;
+    return typeof asHex === 'function' ? hexOf(asHex.call(v)) : null;
+}
+
+/**
+ * One `shield_batch` operation read back — PAPI's decoded tuple or its JSON — in the
+ * runtime's order `(asset_id, amount, commitment, encrypted_memo, proof,
+ * circuit_version)`, or null when it does not have that shape.
+ */
+export function decodeShieldBatchOperation(op: unknown): {
+    assetId: number;
+    amount: bigint;
+    commitment: string;
+    circuitVersion: number;
+} | null {
+    if (!Array.isArray(op) || op.length !== 6) return null;
+    const [assetId, amount, commitment, , , circuitVersion] = op as unknown[];
+    const hex = hexOf(commitment);
+    const asset = Number(assetId);
+    const version = Number(circuitVersion);
+    if (!hex || !Number.isInteger(asset) || !Number.isInteger(version)) return null;
+    let value: bigint;
+    try {
+        value = BigInt(amount as bigint | number | string);
+    } catch {
+        return null;
+    }
+    return { assetId: asset, amount: value, commitment: hex, circuitVersion: version };
 }
 
 /** `ShieldedPool.unshield`'s arguments, by name. A total unshield carries no change. */

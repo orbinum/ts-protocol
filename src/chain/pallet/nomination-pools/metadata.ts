@@ -8,6 +8,7 @@
  * written or read back, without credentials, so a client never renders a script, data
  * or plain-http link from it.
  */
+import { ProtocolRefusal } from '../../refusal';
 
 /** The most bytes a pool's metadata holds (`MaxMetadataLen`). */
 export const POOL_METADATA_MAX_BYTES = 256;
@@ -110,7 +111,7 @@ function poolMetadataText(profile: PoolProfile): string {
 /** The metadata bytes for `profile`; throws `setMetadata: <refusal>` when it cannot be written. */
 export function encodePoolMetadata(profile: PoolProfile): Uint8Array {
     const refusal = poolProfileRefusal(profile);
-    if (refusal) throw new Error(`setMetadata: ${refusal}`);
+    if (refusal) throw new ProtocolRefusal('setMetadata', refusal, `setMetadata: ${refusal}`);
     return encoder.encode(poolMetadataText(profile));
 }
 

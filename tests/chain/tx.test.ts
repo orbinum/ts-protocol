@@ -44,3 +44,47 @@ describe('signAndSubmitTx with a shielded-pool spend', () => {
         expect(signed).toBe(false);
     });
 });
+
+describe('fee and signed hash', () => {
+    const feeEvent = {
+        type: 'TransactionPayment',
+        value: { type: 'TransactionFeePaid', value: { who: 'x', actual_fee: 1234n, tip: 0n } },
+    };
+
+    it('toTxResult carries the fee the inclusion charged, when there is one', () => {
+        const paid = {
+            txHash: '0x01',
+            block: { hash: '0x02', number: 7 },
+            ok: true,
+            events: [feeEvent],
+        };
+        expect(toTxResult(paid as never).fee).toBe('1234');
+        expect(toTxResult(finalized(true))).not.toHaveProperty('fee');
+    });
+
+    it('onSigned hears the hash before the tx is broadcast', async () => {
+        const seen: string[] = [];
+        const tx = {
+            decodedCall: { type: 'Balances', value: { type: 'transfer_keep_alive', value: {} } },
+            createSubmitAndWatch: () => ({
+                subscribe(o: { next(e: unknown): void }) {
+                    o.next({ type: 'signed', txHash: '0xaa' });
+                    o.next({ type: 'broadcasted' });
+                    o.next({
+                        type: 'finalized',
+                        txHash: '0xaa',
+                        block: { hash: '0x02', number: 1 },
+                        ok: true,
+                        events: [feeEvent],
+                    });
+                },
+            }),
+        } as unknown as UnsafeTx;
+        const result = await signAndSubmitTx(tx, {} as SubstrateSigner, {
+            onSigned: (h) => seen.push(`signed ${h}`),
+            onBroadcast: () => seen.push('broadcast'),
+        });
+        expect(seen).toEqual(['signed 0xaa', 'broadcast']);
+        expect(result.fee).toBe('1234');
+    });
+});

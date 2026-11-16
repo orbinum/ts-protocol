@@ -89,15 +89,23 @@ function computeOwnerPkPoint(ax: bigint): [bigint, bigint] | null {
     return null;
 }
 
+/**
+ * The stealth scalar of a payment to `ownerPk`:
+ * `HKDF-SHA256(sharedSecret, salt = ownerPk LE, "orbinum-stealth-v1") mod suborder || 1`.
+ * The owner key adds it to the base point, the spending key to itself.
+ */
+export function stealthScalar(sharedSecret: Uint8Array, ownerPk: bigint): bigint {
+    const bytes = hkdf(sha256, sharedSecret, bigintTo32Le(ownerPk), STEALTH_INFO, 32);
+    return bytesToBigintLE(bytes) % BABYJUB_SUBORDER || 1n;
+}
+
 /** The stealth owner key a payment to `ownerPk` (at `point`) carries, from the memo's shared secret. */
 export function stealthOwnerPk(
     sharedSecret: Uint8Array,
     ownerPk: bigint,
     point: [bigint, bigint]
 ): bigint {
-    const bytes = hkdf(sha256, sharedSecret, bigintTo32Le(ownerPk), STEALTH_INFO, 32);
-    const scalar = bytesToBigintLE(bytes) % BABYJUB_SUBORDER || 1n;
-    return addPoint(mulPointEscalar(Base8, scalar), point)[0];
+    return addPoint(mulPointEscalar(Base8, stealthScalar(sharedSecret, ownerPk)), point)[0];
 }
 
 /**

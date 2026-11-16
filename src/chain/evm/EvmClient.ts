@@ -1,5 +1,5 @@
 import { hexToNumber, hexToBigint } from '../../foundation/encoding/hex';
-import { batchResults, postJsonWithRetry } from '../../foundation/jsonRpcHttp';
+import { batchResults, postJsonWithRetry } from '../rpc/jsonRpcHttp';
 
 /** Internal shape of a single JSON-RPC 2.0 response. */
 type JsonRpcResponse<T> = {

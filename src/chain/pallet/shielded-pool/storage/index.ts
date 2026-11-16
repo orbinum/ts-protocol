@@ -1,1 +1,1 @@
-export { readPendingFees, readMinSpendFee, readIsKnownRoot } from './reads';
+export { readPendingFees, readMinSpendFee, readIsKnownRoot, readTreeSize, readLeaf } from './reads';

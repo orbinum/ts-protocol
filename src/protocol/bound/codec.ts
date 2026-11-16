@@ -5,7 +5,7 @@
 import { Bytes, Struct, Variant, u128, u32 } from '@polkadot-api/substrate-bindings';
 import { BN254_R } from '../../foundation/crypto/constants';
 import { bytesToBigintLE } from '../../foundation/encoding/bytes';
-import { toHex } from '../../foundation/encoding/hex';
+import { fromHex, isHexOfLength, toHex } from '../../foundation/encoding/hex';
 import type { BoundAction } from './types';
 
 const key32 = Bytes(32);
@@ -68,4 +68,47 @@ export function boundActionArg(action: BoundAction) {
 /** SCALE encoding of the action, from its raw key bytes (the codec mis-encodes hex). */
 export function encodeBoundAction(action: BoundAction): Uint8Array {
     return boundActionCodec.enc(withFieldNames(action, (bytes) => bytes) as never);
+}
+
+/** 32 key bytes from what a decoder hands back: hex, bytes, or PAPI's `FixedSizeBinary`. */
+function keyBytes(v: unknown): Uint8Array | null {
+    if (v instanceof Uint8Array) return v.length === 32 ? v : null;
+    if (typeof v === 'string') return isHexOfLength(v, 32) ? fromHex(v) : null;
+    const asBytes = (v as { asBytes?: () => Uint8Array } | null)?.asBytes;
+    return typeof asBytes === 'function' ? keyBytes(asBytes.call(v)) : null;
+}
+
+function amount(v: unknown): bigint | null {
+    if (typeof v === 'bigint') return v;
+    if (typeof v === 'number' && Number.isSafeInteger(v)) return BigInt(v);
+    return typeof v === 'string' && /^\d+$/.test(v) ? BigInt(v) : null;
+}
+
+/**
+ * A bound spend's `action` argument read back — as PAPI decodes it, or as its JSON (keys
+ * as hex, amounts as decimal text) — or null when it is not a valid `BoundAction`.
+ */
+export function decodeBoundAction(raw: unknown): BoundAction | null {
+    const variant = (v: unknown) =>
+        v && typeof v === 'object' && typeof (v as { type?: unknown }).type === 'string'
+            ? (v as { type: string; value?: unknown })
+            : null;
+    const outer = variant(raw);
+    const inner = outer?.type === 'PrivateStaking' ? variant(outer.value) : null;
+    if (!inner || (inner.type !== 'Enter' && inner.type !== 'Exit')) return null;
+    const body = (inner.value ?? {}) as Record<string, unknown>;
+    const poolId = Number(body['pool_id']);
+    const ownerPk = keyBytes(body['owner_pk']);
+    const blinding = keyBytes(body['blinding']);
+    const min = amount(body[inner.type === 'Enter' ? 'min_shares' : 'min_value']);
+    if (!ownerPk || !blinding || min === null) return null;
+    const value =
+        inner.type === 'Enter'
+            ? { type: 'Enter' as const, value: { poolId, ownerPk, blinding, minShares: min } }
+            : { type: 'Exit' as const, value: { poolId, ownerPk, blinding, minValue: min } };
+    try {
+        return checked({ type: 'PrivateStaking', value });
+    } catch {
+        return null;
+    }
 }

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { blake2b } from '@noble/hashes/blake2.js';
 import {
+    boundActionArg,
+    decodeBoundAction,
     BOUND_SPEND_DOMAIN,
     boundSpendDigest,
     encodeBoundAction,
@@ -97,5 +99,39 @@ describe('boundSpendDigest', () => {
 
     it('refuses a genesis hash that is not 32 bytes', () => {
         expect(() => boundSpendDigest('0x00', enter(), [])).toThrow(/32 bytes/);
+    });
+});
+
+describe('decodeBoundAction', () => {
+    it('reads back what the call argument carries, as PAPI or as JSON', () => {
+        const action = enter(9n);
+        expect(decodeBoundAction(boundActionArg(action))).toEqual(action);
+        const json = JSON.parse(
+            JSON.stringify(boundActionArg(action), (_k, v) => (typeof v === 'bigint' ? `${v}` : v))
+        );
+        expect(decodeBoundAction(json)).toEqual(action);
+        const papi = boundActionArg(action);
+        const fixed = { asBytes: () => action.value.value.ownerPk };
+        expect(
+            decodeBoundAction({
+                ...papi,
+                value: { ...papi.value, value: { ...papi.value.value, owner_pk: fixed } },
+            })
+        ).toEqual(action);
+    });
+
+    it('is null for anything that is not a valid action', () => {
+        const papi = boundActionArg(enter());
+        const body = papi.value.value;
+        for (const bad of [
+            null,
+            { type: 'Other', value: papi.value },
+            { ...papi, value: { type: 'Stake', value: body } },
+            { ...papi, value: { ...papi.value, value: { ...body, owner_pk: '0x00' } } },
+            { ...papi, value: { ...papi.value, value: { ...body, blinding: toHex(key(0)) } } },
+            { ...papi, value: { ...papi.value, value: { ...body, min_shares: '-1' } } },
+        ]) {
+            expect(decodeBoundAction(bad)).toBeNull();
+        }
     });
 });

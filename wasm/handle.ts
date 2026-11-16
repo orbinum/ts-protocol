@@ -20,7 +20,7 @@
  * `commitmentHex` with the order under a unique constraint — one payment, one
  * order.
  */
-import { commitmentLeafIndexKey } from '../src/chain/rpc/finalizedLeaf';
+import { commitmentLeafIndexKey } from '../src/protocol/payment/finalizedLeaf';
 import { checkPaymentProof } from '../src/protocol/payment/verifyProof';
 
 const DIGITS = /^(0|[1-9]\d{0,77})$/;

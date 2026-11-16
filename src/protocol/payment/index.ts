@@ -19,8 +19,9 @@
  *   verify/      verifyPayment — amount and chain
  *   verifyProof/ checkPaymentProof / verifyPaymentProof — a proof, offline and on chain
  *
- * Only the API below is public; the rest is the read path, ported byte for byte
- * from the wallet and pinned to it by `tests/vectors/payment-*.json`.
+ * The formulas a wallet and a verifier both compute (commitment, owner and stealth
+ * keys, memo keys, sender claims, the address) are defined here once; the wallet
+ * imports them. `tests/vectors/payment-*.json` pins them to real notes.
  */
 export { readPaymentSlip } from './read';
 export type { ReceivedPayment } from './read';
@@ -36,11 +37,28 @@ export { checkPaymentProof, verifyPaymentProof } from './verifyProof';
 export type { PaymentProofCheck, PaymentProofVerification, ProvenPayment } from './verifyProof';
 export { encodePaymentProof, decodePaymentProof, PAYMENT_PROOF_SCHEME } from './proof';
 export type { PaymentProof } from './proof';
-export { decodePaymentAddress, PRIVACY_ADDRESS_SCHEME } from './address';
 export {
-    commitmentLeafIndexKey,
-    COMMITMENT_TO_LEAF_INDEX_PREFIX,
-} from '../../chain/rpc/finalizedLeaf';
+    decodePaymentAddress,
+    decodePrivacyAddress,
+    encodePrivacyAddress,
+    PRIVACY_ADDRESS_SCHEME,
+} from './address';
+// The formulas a wallet and a verifier must compute alike: one definition, here.
+export { noteCommitment } from './commitment';
+export { ownerPkPoint, stealthScalar, stealthOwnerPk, isOwnedBy } from './owner';
+export { memoEncryptionKey, memoViewTag, memoViewTagMatches, memoEphPk } from './memo';
+export {
+    SENDER_PSEUDONYM_MAX,
+    isValidSenderPseudonym,
+    encodeSenderPseudonym,
+    encodeSenderAddress,
+    decodeSenderClaim,
+    claimedViewingKey,
+    deriveSenderAddressBlinding,
+    senderAddressClaim,
+} from './sender';
+export type { SenderClaim, SenderAuth } from './sender';
+export { commitmentLeafIndexKey, COMMITMENT_TO_LEAF_INDEX_PREFIX } from './finalizedLeaf';
 export type { PaymentAddress } from './address';
 export type { PaymentSender } from './sender';
 export { encodeViewingKey, decodeViewingKey, VIEWING_KEY_SCHEME } from './viewingKey';

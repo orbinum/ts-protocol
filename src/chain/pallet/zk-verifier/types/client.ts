@@ -15,3 +15,10 @@ export type ZkVerifierCircuitVersionInfo = {
     supportedVersions: number[];
     vkHashes: ZkVerifierVkHash[];
 };
+
+/** How many proofs a verification key has checked (`ZkVerifier.VerificationStats`). */
+export type ZkVerificationStats = {
+    total: number;
+    successful: number;
+    failed: number;
+};

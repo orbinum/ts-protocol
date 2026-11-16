@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { timestampFromExtrinsics } from '../../../src/chain/substrate/blockInfo';
+import {
+    auraSlot,
+    authorFromSlot,
+    timestampFromExtrinsics,
+} from '../../../src/chain/substrate/blockInfo';
 
 /** `Compact(len) || version || Timestamp(1) || set(0) || Compact<u64>`. */
 const timestampSet = (compact: string) => '0x' + '28' + '04' + '01' + '00' + compact;
@@ -22,5 +26,23 @@ describe('timestampFromExtrinsics', () => {
 
     it('survives malformed hex', () => {
         expect(timestampFromExtrinsics(['0xzz', '0x'])).toBeNull();
+    });
+});
+
+describe('Aura authorship', () => {
+    // 06 PreRuntime ‖ "aura" ‖ compact(8) ‖ slot 0x0102 LE.
+    const AURA = '0x066175726120' + '0201000000000000';
+
+    it('reads the slot from the Aura pre-runtime digest', () => {
+        expect(auraSlot(['0x0561757261aa', AURA])).toBe(258n);
+        expect(auraSlot(['0x0662616265' + '00'.repeat(40)])).toBeNull(); // Babe: not ours
+        expect(auraSlot([])).toBeNull();
+    });
+
+    it('the author is the validator the slot falls on, round-robin', () => {
+        expect(authorFromSlot(258n, ['A', 'B', 'C'])).toBe('A'); // 258 % 3 = 0
+        expect(authorFromSlot(259n, ['A', 'B', 'C'])).toBe('B');
+        expect(authorFromSlot(258n, [])).toBeNull();
+        expect(authorFromSlot(null, ['A'])).toBeNull();
     });
 });

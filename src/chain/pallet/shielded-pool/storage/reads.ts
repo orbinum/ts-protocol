@@ -19,6 +19,10 @@ type ShieldedPoolReads = {
             PoseidonRoot: { getValue(): Promise<string> };
             HistoricPoseidonRoots: { getValue(root: string): Promise<number | undefined> };
             SealedRootIndex: { getValue(root: string): Promise<number | undefined> };
+            MerkleTreeSize: { getValue(): Promise<bigint | number> };
+            MerkleLeaves: {
+                getValue(index: number): Promise<string | { asHex(): string } | undefined>;
+            };
         };
         System: { Number: { getValue(): Promise<number> } };
     };
@@ -77,4 +81,20 @@ export async function readIsKnownRoot(
     ]);
     if (String(active).toLowerCase() === key || sealed !== undefined) return true;
     return expiresAt !== undefined && Number(expiresAt) >= Number(now) + minBlocksLeft;
+}
+
+/** How many leaves the commitment tree holds, over every tree (`ShieldedPool.MerkleTreeSize`). */
+export async function readTreeSize(substrate: SubstrateClient): Promise<number> {
+    return Number(await poolReads(substrate).query.ShieldedPool.MerkleTreeSize.getValue());
+}
+
+/**
+ * The commitment at leaf `index` (lowercase 0x hex), or null when the tree has no such
+ * leaf (beyond its size, or in a pruned tree).
+ */
+export async function readLeaf(substrate: SubstrateClient, index: number): Promise<string | null> {
+    assertU32(index, 'leaf.index');
+    const leaf = await poolReads(substrate).query.ShieldedPool.MerkleLeaves.getValue(index);
+    if (leaf === undefined) return null;
+    return (typeof leaf === 'string' ? leaf : leaf.asHex()).toLowerCase();
 }

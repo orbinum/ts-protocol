@@ -13,10 +13,12 @@ import { BN254_R } from '../../../foundation/crypto/constants';
 import { secretMulPoint } from '../../../foundation/crypto/bjj-fast';
 import { unpackSubgroupViewingKey } from '../../../foundation/crypto/bjj';
 import { bigintTo32Le, bytesToBigintLE } from '../../../foundation/encoding/bytes';
-import { scalarToHex, toHex } from '../../../foundation/encoding/hex';
 import { bytesToBjjScalar } from '../../memo/memoFormat';
 import type { MemoPlaintext } from '../memo';
 import { ownerPkPoint } from '../owner';
+import { claimedViewingKey, decodeSenderClaim } from './encoding';
+
+export * from './encoding';
 
 /** Who the payment says it came from. An address is reported only once its claim verified. */
 export type PaymentSender =
@@ -24,41 +26,41 @@ export type PaymentSender =
     | { kind: 'pseudonym'; name: string }
     | { kind: 'address'; address: string };
 
-type SenderClaim =
-    | { kind: 'anonymous' }
-    | { kind: 'pseudonym'; name: string }
-    | { kind: 'address'; ownerPk: bigint; viewingKeySign: 0n | 1n };
-
-const TAG_SHIFT = 254n;
-const BODY_MASK = (1n << TAG_SHIFT) - 1n;
-const TAG_PSEUDONYM = 1n;
-const TAG_ADDRESS = 2n;
-const Y_MASK = (1n << 255n) - 1n;
-const PSEUDONYM_MAX = 24;
-const PSEUDONYM = /^[A-Za-z0-9]{1,24}$/;
 const IDENTITY_BLINDING_DOMAIN = new TextEncoder().encode('orbinum-sender-identity-v1');
 
-/** What `sourcePk` claims, read strictly. */
-export function decodeSenderClaim(sourcePk: bigint): SenderClaim {
-    const anonymous = { kind: 'anonymous' } as const;
-    if (typeof sourcePk !== 'bigint' || sourcePk <= 0n || sourcePk >> 256n !== 0n) return anonymous;
-    const tag = sourcePk >> TAG_SHIFT;
-    const body = sourcePk & BODY_MASK;
-    if (tag === TAG_PSEUDONYM) {
-        if (body >> BigInt(8 * PSEUDONYM_MAX) !== 0n) return anonymous;
-        const bytes = bigintTo32Le(body).subarray(0, PSEUDONYM_MAX);
-        const end = bytes.indexOf(0);
-        const used = end === -1 ? bytes : bytes.subarray(0, end);
-        // Zero padding only after the name: a byte past the first zero is not canonical.
-        if (bytes.subarray(used.length).some((b) => b !== 0)) return anonymous;
-        const name = String.fromCharCode(...used);
-        return PSEUDONYM.test(name) ? { kind: 'pseudonym', name } : anonymous;
-    }
-    if (tag >= TAG_ADDRESS) {
-        if (body === 0n || body >= BN254_R) return anonymous;
-        return { kind: 'address', ownerPk: body, viewingKeySign: tag === TAG_ADDRESS ? 0n : 1n };
-    }
-    return anonymous;
+/** The two static secrets that authenticate an address claim. */
+export interface SenderAuth {
+    /** `ECDH(sender ivk, recipient ivk)`: binds the viewing key. */
+    viewing: Uint8Array;
+    /** `ECDH(sender spending key, recipient ivk)`: binds `ownerPk`. */
+    owner: Uint8Array;
+}
+
+/**
+ * The blinding of a payment that names its sender by address.
+ *
+ * Bound to the payment's ephemeral secret (hidden from outsiders), to both
+ * static secrets (only the sender's keys or the recipient's viewing key reach
+ * them) and to the claimed address, so a recipient that recomputes the
+ * commitment has checked all of them.
+ */
+export function deriveSenderAddressBlinding(
+    sharedSecret: Uint8Array,
+    auth: SenderAuth,
+    senderOwnerPk: bigint,
+    senderViewingPublicKey: Uint8Array
+): bigint {
+    const ikm = new Uint8Array(96);
+    ikm.set(sharedSecret.subarray(0, 32));
+    ikm.set(auth.viewing.subarray(0, 32), 32);
+    ikm.set(auth.owner.subarray(0, 32), 64);
+    const info = new Uint8Array(IDENTITY_BLINDING_DOMAIN.length + 64);
+    info.set(IDENTITY_BLINDING_DOMAIN);
+    info.set(bigintTo32Le(senderOwnerPk), IDENTITY_BLINDING_DOMAIN.length);
+    info.set(senderViewingPublicKey.subarray(0, 32), IDENTITY_BLINDING_DOMAIN.length + 32);
+    // 48 bytes reduced mod r keeps the bias below 2^-128.
+    const value = bytesToBigintLE(hkdf(sha256, ikm, undefined, info, 48)) % BN254_R;
+    return value === 0n ? 1n : value;
 }
 
 /**
@@ -75,29 +77,21 @@ export function senderAddressClaim(
 ): { blinding: bigint; ownerPk: bigint; viewingPublicKey: Uint8Array } | null {
     const claim = decodeSenderClaim(plaintext.sourcePk);
     if (claim.kind !== 'address') return null;
-    const viewingPublicKey = bigintTo32Le(
-        (claim.viewingKeySign << 255n) | (plaintext.blinding & Y_MASK)
-    );
+    const viewingPublicKey = claimedViewingKey(claim.viewingKeySign, plaintext.blinding);
     const senderPoint = unpackSubgroupViewingKey(bytesToBigintLE(viewingPublicKey));
     const ownerPoint = ownerPkPoint(claim.ownerPk);
     if (!senderPoint || !ownerPoint) return null;
+    // Constant-time: the scalar is the recipient's viewing secret key.
     const scalar = bytesToBjjScalar(viewingSecretKey);
-    const ikm = new Uint8Array(96);
-    ikm.set(sharedSecret.subarray(0, 32));
-    ikm.set(bigintTo32Le(secretMulPoint(senderPoint, scalar)[0]), 32);
-    ikm.set(bigintTo32Le(secretMulPoint(ownerPoint, scalar)[0]), 64);
-    const info = new Uint8Array(IDENTITY_BLINDING_DOMAIN.length + 64);
-    info.set(IDENTITY_BLINDING_DOMAIN);
-    info.set(bigintTo32Le(claim.ownerPk), IDENTITY_BLINDING_DOMAIN.length);
-    info.set(viewingPublicKey, IDENTITY_BLINDING_DOMAIN.length + 32);
-    // 48 bytes reduced mod r keeps the bias below 2^-128.
-    const derived = bytesToBigintLE(hkdf(sha256, ikm, undefined, info, 48)) % BN254_R;
-    return { blinding: derived === 0n ? 1n : derived, ownerPk: claim.ownerPk, viewingPublicKey };
-}
-
-/** `orbpriv3:` address of an owner key and packed viewing key, with its checksum. */
-export function privacyAddressOf(ownerPk: bigint, viewingPublicKey: Uint8Array): string {
-    const body = `orbpriv3:${scalarToHex(ownerPk)}:${toHex(viewingPublicKey)}`;
-    const checksum = toHex(sha256(new TextEncoder().encode(body)).slice(0, 4)).slice(2);
-    return `${body}:${checksum}`;
+    const auth = {
+        viewing: bigintTo32Le(secretMulPoint(senderPoint, scalar)[0]),
+        owner: bigintTo32Le(secretMulPoint(ownerPoint, scalar)[0]),
+    };
+    const blinding = deriveSenderAddressBlinding(
+        sharedSecret,
+        auth,
+        claim.ownerPk,
+        viewingPublicKey
+    );
+    return { blinding, ownerPk: claim.ownerPk, viewingPublicKey };
 }

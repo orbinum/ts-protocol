@@ -27,3 +27,21 @@ export const textMessage = (payload: Uint8Array, genesis: Uint8Array, summary: s
 /** What a Substrate extension's `signRaw` signs for `message` (polkadot-js `u8aWrapBytes`). */
 export const wrapBytes = (message: Uint8Array) =>
     concat(utf8('<Bytes>'), message, utf8('</Bytes>'));
+
+/**
+ * A transaction text read back for display: the call it names (`action:`) and the
+ * `key: value` lines up to `payload:`. Null when `text` names no action.
+ */
+export function parseTransactionText(
+    text: string
+): { action: string; lines: [string, string][] } | null {
+    const all = text.split('\n');
+    const start = all.findIndex((l) => l.startsWith('action: '));
+    if (start < 0) return null;
+    const end = all.findIndex((l, i) => i > start && l.startsWith('payload: '));
+    const lines = all.slice(start + 1, end < 0 ? undefined : end).map((l): [string, string] => {
+        const at = l.indexOf(': ');
+        return at < 0 ? [l, ''] : [l.slice(0, at), l.slice(at + 2)];
+    });
+    return { action: all[start]!.slice('action: '.length), lines };
+}

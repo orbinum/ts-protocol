@@ -54,6 +54,7 @@ import type {
     StakingConfig,
     ValidatorPrefs,
 } from './types/index';
+import { ProtocolRefusal } from '../../refusal';
 
 /** Concurrent `pending_rewards` calls while scanning eras. */
 const PAYOUT_SCAN_CONCURRENCY = 8;
@@ -230,11 +231,21 @@ export class StakingModule {
         ]);
         const notValidating = missing.filter((t) => !current.includes(t));
         if (notValidating.length) {
-            throw new Error(`nominate.targets: not a validator: ${notValidating.join(', ')}`);
+            throw new ProtocolRefusal(
+                'nominate',
+                'NotValidator',
+                `nominate.targets: not a validator: ${notValidating.join(', ')}`,
+                { targets: notValidating }
+            );
         }
         const refused = blocked.filter((t) => !current.includes(t));
         if (refused.length) {
-            throw new Error(`nominate.targets: blocks new nominations: ${refused.join(', ')}`);
+            throw new ProtocolRefusal(
+                'nominate',
+                'BlocksNominations',
+                `nominate.targets: blocks new nominations: ${refused.join(', ')}`,
+                { targets: refused }
+            );
         }
         return this.submit('Staking', 'nominate', args, signer, options);
     }
@@ -251,10 +262,20 @@ export class StakingModule {
             readMaxCommission(this.substrate),
         ]);
         if (args.prefs.commission > max) {
-            throw new Error(`validate.commission: above the ${formatPercent(max)} maximum`);
+            throw new ProtocolRefusal(
+                'validate',
+                'CommissionAboveMax',
+                `validate.commission: above the ${formatPercent(max)} maximum`,
+                { bound: max }
+            );
         }
         if (args.prefs.commission < min) {
-            throw new Error(`validate.commission: below the ${formatPercent(min)} minimum`);
+            throw new ProtocolRefusal(
+                'validate',
+                'CommissionBelowMin',
+                `validate.commission: below the ${formatPercent(min)} minimum`,
+                { bound: min }
+            );
         }
         return this.submit('Staking', 'validate', args, signer, options);
     }
@@ -321,7 +342,11 @@ export class StakingModule {
     private async refuseIfPoolMember(signer: SubstrateSigner): Promise<void> {
         const who = signerAccount(signer);
         if (who && (await readIsPoolMember(this.substrate, who))) {
-            throw new Error('bond: the account is in a nomination pool; leave it first');
+            throw new ProtocolRefusal(
+                'bond',
+                'InNominationPool',
+                'bond: the account is in a nomination pool; leave it first'
+            );
         }
     }
 
@@ -333,7 +358,12 @@ export class StakingModule {
         const min = await readMinBonds(this.substrate);
         const floor = min.nominator < min.validator ? min.nominator : min.validator;
         if (active + added < floor) {
-            throw new Error(`${what}: below the minimum bond of ${floor} planck`);
+            throw new ProtocolRefusal(
+                what.split('.')[0]!,
+                'BelowMinimumBond',
+                `${what}: below the minimum bond of ${floor} planck`,
+                { field: what, minimum: floor }
+            );
         }
     }
 
@@ -372,9 +402,12 @@ export class StakingModule {
               ? { name: 'validator', min: min.validator }
               : null;
         if (role && left < role.min) {
-            throw new Error(
+            throw new ProtocolRefusal(
+                'unbond',
+                'RemainderBelowRoleMinimum',
                 `unbond.value: would leave ${left} planck bonded, below the ${role.name} ` +
-                    `minimum of ${role.min}; unbond everything (it stops staking) or chill first`
+                    `minimum of ${role.min}; unbond everything (it stops staking) or chill first`,
+                { left, role: role.name as 'nominator' | 'validator', minimum: role.min }
             );
         }
     }
@@ -385,7 +418,12 @@ export class StakingModule {
         );
         const alone = nominators.filter((_, i) => targets[i]!.length === 1);
         if (alone.length) {
-            throw new Error(`kick.who: their only target would be removed: ${alone.join(', ')}`);
+            throw new ProtocolRefusal(
+                'kick',
+                'KickLeavesNoTarget',
+                `kick.who: their only target would be removed: ${alone.join(', ')}`,
+                { nominators: alone }
+            );
         }
     }
 

@@ -1,4 +1,4 @@
-import { MemoFormat } from '../../../../../protocol/memo/index';
+import { MemoFormat } from '../../../../../protocol/memo/memoFormat';
 import { TRANSFER_INPUTS, TRANSFER_OUTPUTS } from '../../constants';
 import type { BoundSpendParams, PrivateTransferParams, UnshieldParams } from '../../types/params';
 import {

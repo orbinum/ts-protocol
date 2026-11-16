@@ -4,7 +4,7 @@
  * these only spare a person a rejected transaction.
  */
 import { accountIdHexToSs58 } from '../../../foundation/address';
-import { toHex } from '../../../foundation/encoding/hex';
+import { ORBINUM_PALLET_IDS, palletAccountId } from '../palletAccount';
 
 /** `Perbill` parts in 100 %. */
 export const PERBILL = 1_000_000_000;
@@ -25,15 +25,12 @@ export function openModeMinSelfBond(specName: string): bigint {
         : OPEN_MODE_MIN_SELF_BOND;
 }
 
-/** `PalletId::into_account_truncating`: `modl` ++ the 8-byte id, zero-padded to 32 bytes. */
 function palletAccount(id: string): string {
-    const bytes = new Uint8Array(32);
-    bytes.set(new TextEncoder().encode(`modl${id}`));
-    return accountIdHexToSs58(toHex(bytes)) as string;
+    return accountIdHexToSs58(palletAccountId(id)) as string;
 }
 
 /** The account the era's fees collect in until the era pays them out (`orb/feep`). */
-export const ERA_FEE_POOL_ACCOUNT = palletAccount('orb/feep');
+export const ERA_FEE_POOL_ACCOUNT = palletAccount(ORBINUM_PALLET_IDS.eraFeePool);
 
 /** The governance account slashes go to (`py/trsry`). */
-export const GOVERNANCE_ACCOUNT = palletAccount('py/trsry');
+export const GOVERNANCE_ACCOUNT = palletAccount(ORBINUM_PALLET_IDS.governance);

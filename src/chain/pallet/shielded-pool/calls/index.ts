@@ -1,6 +1,7 @@
 export {
     shieldCallArgs,
     shieldBatchCallArgs,
+    decodeShieldBatchOperation,
     unshieldCallArgs,
     boundSpendCallArgs,
     privateTransferCallArgs,

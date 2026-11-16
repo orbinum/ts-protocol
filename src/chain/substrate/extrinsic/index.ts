@@ -5,16 +5,12 @@
  * is unavailable. These two tables map those positions onto the field names the
  * pallets declare, so a caller reads `nullifier` instead of `arg2`.
  *
- * BEST EFFORT, BY METHOD NAME ONLY. Neither helper is given the pallet section,
- * so two pallets that declare the same method name are indistinguishable here —
- * see the `Executed` note below. A consumer that needs certainty decodes
- * against metadata instead.
+ * Values are returned as decoded — amounts stay as the decoder gave them (bigint or
+ * decimal text), never formatted: rendering is the host's. An event's pallet, when
+ * given, tells apart two pallets declaring the same event name (`Executed`).
  *
- * `events.ts` is the canonical model of the shielded-pool events; this file is
- * a display convenience and does not replace it.
+ * `events.ts` is the canonical model of the shielded-pool events.
  */
-
-import { formatBalance } from '../../../foundation/text/format';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PARSERS & MAPPERS
@@ -379,13 +375,15 @@ export function mapExtrinsicArgs(
  * Maps raw event data fields (which may use positional keys) to semantic names
  * for shielded-pool, zk-verifier, evm, ethereum and system events.
  *
- * @param method - Event name (e.g. `'shielded'`, `'unshielded'`).
- * @param data   - Raw event data fields.
+ * @param method  - Event name (e.g. `'shielded'`, `'unshielded'`).
+ * @param data    - Raw event data fields.
+ * @param section - The event's pallet, when known (tells the two `Executed` apart).
  * @returns Remapped data with semantic keys, or the original object if unknown.
  */
 export function mapZkEventData(
     method: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    section?: string
 ): Record<string, unknown> {
     const m = method.toLowerCase();
 
@@ -399,11 +397,6 @@ export function mapZkEventData(
         return undefined;
     };
 
-    const formatAmount = (val: unknown): string | null => {
-        if (val === undefined || val === null) return null;
-        return formatBalance(String(val));
-    };
-
     const m_norm = m.replace(/_/g, '');
 
     // ── shielded-pool events ─────────────────────────────────────────────────
@@ -411,7 +404,7 @@ export function mapZkEventData(
     if (m_norm === 'shielded') {
         return {
             sender: get(0, 'depositor'),
-            amount: formatAmount(get(1, 'amount')),
+            amount: get(1, 'amount'),
             commitment: get(2, 'commitment'),
             memo: get(3, 'encrypted_memo'),
             index: get(4, 'leaf_index'),
@@ -436,7 +429,7 @@ export function mapZkEventData(
     if (m_norm === 'unshielded') {
         return {
             nullifier: get(0, 'nullifier'),
-            amount: formatAmount(get(1, 'amount')),
+            amount: get(1, 'amount'),
             recipient: get(2, 'recipient'),
             change_commitment: get(3, 'change_commitment'),
             change_memo: get(4, 'change_encrypted_memo'),
@@ -450,7 +443,7 @@ export function mapZkEventData(
         return {
             nullifier: get(0, 'nullifier'),
             asset_id: get(1, 'asset_id'),
-            amount: formatAmount(get(2, 'amount')),
+            amount: get(2, 'amount'),
             executor: get(3, 'executor'),
             change_commitment: get(4, 'change_commitment'),
             change_memo: get(5, 'change_encrypted_memo'),
@@ -489,7 +482,7 @@ export function mapZkEventData(
         return {
             validator: get(0, 'validator'),
             asset_id: get(1, 'asset_id'),
-            amount: formatAmount(get(2, 'amount')),
+            amount: get(2, 'amount'),
         };
     }
 
@@ -542,12 +535,13 @@ export function mapZkEventData(
 
     // ── ethereum events ───────────────────────────────────────────────────────
 
-    // `Executed` is declared by BOTH pallets, with different shapes:
-    // `pallet-evm` as `{ address }`, `pallet-ethereum` as
-    // `{ from, to, transaction_hash, exit_reason }`. Without the section there
-    // is no way to tell them apart, so the richer shape wins — its fields are
-    // read by name first, and an evm-only event simply resolves `from` from
-    // `address` and leaves the rest undefined.
+    // `Executed` is declared by BOTH pallets, with different shapes: `pallet-evm` as
+    // `{ address }`, `pallet-ethereum` as `{ from, to, transaction_hash, exit_reason }`.
+    // The section tells them apart; without it the richer shape wins, and an
+    // evm-only event resolves `from` from `address`.
+    if (m_norm === 'executed' && section?.toLowerCase() === 'evm') {
+        return { address: get(0, 'address') };
+    }
     if (m_norm === 'executed') {
         return {
             from: get(0, 'from') ?? get(0, 'address'),

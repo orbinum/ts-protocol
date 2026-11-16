@@ -129,3 +129,26 @@ describe('decodePrecompileCalldata — truncated input', () => {
         });
     });
 });
+
+describe('decodePrecompileCalldata — Balances transfers', () => {
+    const BALANCES = '0x0000000000000000000000000000000000000802';
+    const dest = 'cd'.repeat(32);
+    const amount = (10n ** 18n).toString(16).padStart(64, '0');
+
+    it('reads the recipient and the amount of transfer and transferKeepAlive', () => {
+        for (const [selector, method] of [
+            ['6a467394', 'transfer'],
+            ['ac6ac4c4', 'transferKeepAlive'],
+        ] as const) {
+            expect(decodePrecompileCalldata(BALANCES, `0x${selector}${dest}${amount}`)).toEqual({
+                fnSig: expect.stringContaining('(bytes32,uint256)'),
+                method,
+                args: { recipient: `0x${dest}`, amount: 10n ** 18n },
+            });
+        }
+    });
+
+    it('leaves the args empty when the calldata is cut short', () => {
+        expect(decodePrecompileCalldata(BALANCES, `0x6a467394${dest}`)?.args).toEqual({});
+    });
+});

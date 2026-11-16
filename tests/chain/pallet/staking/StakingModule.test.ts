@@ -122,6 +122,12 @@ describe('StakingModule calls', () => {
         await expect(module.nominate([ALICE, BOB], signer)).rejects.toThrow(
             `not a validator: ${BOB}`
         );
+        await expect(module.nominate([ALICE, BOB], signer)).rejects.toMatchObject({
+            name: 'ProtocolRefusal',
+            call: 'nominate',
+            reason: 'NotValidator',
+            detail: { targets: [BOB] },
+        });
         expect(called('Staking.nominate')).toBe(false);
     });
 
@@ -243,9 +249,11 @@ describe('StakingModule calls the chain would refuse after the fee', () => {
     it('refuses a bond below both role minimums', async () => {
         const chain = { minNominatorBond: 10n * ORB, minValidatorBond: 1_000n * ORB };
         const { module, called } = txClient([ALICE, BOB], 1_000_000_000, chain);
-        await expect(module.bond(10n * ORB - 1n, { type: 'Staked' }, alice)).rejects.toThrow(
-            'minimum bond'
-        );
+        await expect(module.bond(10n * ORB - 1n, { type: 'Staked' }, alice)).rejects.toMatchObject({
+            call: 'bond',
+            reason: 'BelowMinimumBond',
+            detail: { field: 'bond.value', minimum: 10n * ORB },
+        });
         expect(called('Staking.bond')).toBe(false);
         await module.bond(10n * ORB, { type: 'Staked' }, alice);
         expect(called('Staking.bond')).toBe(true);

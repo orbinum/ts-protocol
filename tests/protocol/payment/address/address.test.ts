@@ -2,7 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { toHex } from '../../../../src';
-import { decodePaymentAddress } from '../../../../src/protocol/payment';
+import {
+    decodePaymentAddress,
+    decodePrivacyAddress,
+    encodePrivacyAddress,
+} from '../../../../src/protocol/payment';
 import { BN254_R } from '../../../../src/foundation/crypto/constants';
 import { ADDRESS } from '../vectors';
 
@@ -32,6 +36,20 @@ describe('decodePaymentAddress', () => {
         expect(
             decodePaymentAddress(withChecksum(`orbpriv3:${ownerHex}:0x${'00'.repeat(32)}`))
         ).toBeNull();
+    });
+
+    it('reads upper-case fields as the same address, in lower case', () => {
+        const upper = withChecksum(`orbpriv3:${ownerHex.toUpperCase()}:${ivkHex.toUpperCase()}`);
+        expect(decodePrivacyAddress(upper)).toEqual(decodePrivacyAddress(ADDRESS));
+        expect(decodePrivacyAddress(ADDRESS)).toEqual({
+            ownerPkHex: ownerHex.toLowerCase(),
+            viewingPublicKeyHex: ivkHex.toLowerCase(),
+        });
+    });
+
+    it('encodes what it decodes', () => {
+        const { ownerPk, viewingPublicKey } = decodePaymentAddress(ADDRESS)!;
+        expect(encodePrivacyAddress(ownerPk, viewingPublicKey)).toBe(ADDRESS.toLowerCase());
     });
 
     it('refuses non-strings and oversized input', () => {

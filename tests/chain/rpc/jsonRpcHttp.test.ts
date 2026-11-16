@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { batchResults, jsonRpcBatch, wsUrlToHttp } from '../../src/foundation/jsonRpcHttp';
+import { batchResults, jsonRpcBatch, wsUrlToHttp } from '../../../src/chain/rpc/jsonRpcHttp';
 
 const URL = 'https://node.example/rpc';
 

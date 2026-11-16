@@ -76,13 +76,37 @@ export function proofSharedSecret(
     return bigintTo32Le(fastMulPoint(viewingKey, scalar)[0]);
 }
 
-/** Whether the memo's first nonce byte is the view tag of `sharedSecret`. */
-export function memoViewTagMatches(memo: Uint8Array, sharedSecret: Uint8Array): boolean {
-    if (memo.length !== ENCRYPTED_MEMO_SIZE) return false;
+/**
+ * The memo's ChaCha20-Poly1305 key: `SHA256(sharedSecret ‖ commitment ‖
+ * "orbinum-note-encryption-v1")`. The commitment binds it to one note.
+ */
+export function memoEncryptionKey(sharedSecret: Uint8Array, commitment: Uint8Array): Uint8Array {
+    const h = sha256.create();
+    h.update(sharedSecret);
+    h.update(commitment);
+    h.update(KEY_DOMAIN);
+    return h.digest();
+}
+
+/**
+ * The view tag, the memo's first nonce byte: `SHA256("orbinum-view-tag-v1" ‖
+ * sharedSecret)[0]`. A scanner compares it before trying to decrypt.
+ */
+export function memoViewTag(sharedSecret: Uint8Array): number {
     const h = sha256.create();
     h.update(VIEW_TAG_DOMAIN);
     h.update(sharedSecret);
-    return memo[0] === h.digest()[0];
+    return h.digest()[0]!;
+}
+
+/** Whether the memo's first nonce byte is the view tag of `sharedSecret`. */
+export function memoViewTagMatches(memo: Uint8Array, sharedSecret: Uint8Array): boolean {
+    return memo.length === ENCRYPTED_MEMO_SIZE && memo[0] === memoViewTag(sharedSecret);
+}
+
+/** The ephemeral public key a memo publishes (its last 32 bytes), or null for a wrong size. */
+export function memoEphPk(memo: Uint8Array): Uint8Array | null {
+    return memo.length === ENCRYPTED_MEMO_SIZE ? memo.slice(NONCE_SIZE + CIPHERTEXT_SIZE) : null;
 }
 
 /**
@@ -98,15 +122,12 @@ export function openMemo(
 ): MemoPlaintext | null {
     if (memo.length !== ENCRYPTED_MEMO_SIZE || commitment.length !== COMMITMENT_SIZE) return null;
     if (sharedSecret.length !== 32) return null;
-    const keyHash = sha256.create();
-    keyHash.update(sharedSecret);
-    keyHash.update(commitment);
-    keyHash.update(KEY_DOMAIN);
     let plaintext: Uint8Array;
     try {
-        plaintext = chacha20poly1305(keyHash.digest(), memo.slice(0, NONCE_SIZE)).decrypt(
-            memo.slice(NONCE_SIZE, NONCE_SIZE + CIPHERTEXT_SIZE)
-        );
+        plaintext = chacha20poly1305(
+            memoEncryptionKey(sharedSecret, commitment),
+            memo.slice(0, NONCE_SIZE)
+        ).decrypt(memo.slice(NONCE_SIZE, NONCE_SIZE + CIPHERTEXT_SIZE));
     } catch {
         return null;
     }

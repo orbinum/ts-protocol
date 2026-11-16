@@ -13,6 +13,7 @@ import { ShieldedPoolPrecompile } from '../evm/precompiles/ShieldedPoolPrecompil
 import { CryptoPrecompiles } from '../evm/precompiles/CryptoPrecompiles';
 import type { OrbinumClientConfig } from './types';
 import { assertSupportedRuntime } from './runtimeGuard';
+import { BalancesModule } from '../pallet/balances/index';
 
 export type { OrbinumClientConfig };
 
@@ -62,6 +63,8 @@ export class OrbinumClient {
     readonly evmExplorer: EvmExplorer | null;
     /** Shielded-pool extrinsics and Merkle tree queries (`shield`, `unshield`, `privateTransfer`, …). */
     readonly shieldedPool: ShieldedPoolModule;
+    /** Native ORB: an account's balance and nonce, and transfers. */
+    readonly balances: BalancesModule;
     /** Bonding, nominating, validating, payouts and session keys (`bond`, `nominate`, `validate`, …). */
     readonly staking: StakingModule;
     /** Nomination pools: create, join, bond more, claim, unbond, nominate (`join`, `claimPayout`, …). */
@@ -105,6 +108,7 @@ export class OrbinumClient {
         this.evm = evm;
         this.evmExplorer = evm ? new EvmExplorer(evm) : null;
         this.shieldedPool = new ShieldedPoolModule(substrate);
+        this.balances = new BalancesModule(substrate);
         this.staking = new StakingModule(substrate);
         this.pools = new NominationPoolsModule(substrate);
         this.privateStaking = new PrivateStakingModule(substrate);

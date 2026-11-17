@@ -27,6 +27,7 @@ import {
 import {
     readIsKnownRoot,
     readLeaf,
+    readTaggedMemosFromLeaf,
     readMinSpendFee,
     readPendingFees,
     readTreeSize,
@@ -192,6 +193,15 @@ export class ShieldedPoolModule {
     /** How many leaves the commitment tree holds, over every tree. */
     treeSize(): Promise<number> {
         return readTreeSize(this.substrate);
+    }
+
+    /**
+     * The first leaf under the memo-format rule, or null while none is recorded or
+     * the runtime has no such item; a malformed value throws (see
+     * `readTaggedMemosFromLeaf`). Wallets pass it to their scan.
+     */
+    taggedMemosFromLeaf(): Promise<number | null> {
+        return readTaggedMemosFromLeaf(this.substrate);
     }
 
     /** The commitment at leaf `index` (lowercase 0x hex), or null when there is none. */

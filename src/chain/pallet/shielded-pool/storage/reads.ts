@@ -20,6 +20,7 @@ type ShieldedPoolReads = {
             HistoricPoseidonRoots: { getValue(root: string): Promise<number | undefined> };
             SealedRootIndex: { getValue(root: string): Promise<number | undefined> };
             MerkleTreeSize: { getValue(): Promise<bigint | number> };
+            TaggedMemosFromLeaf: { getValue(): Promise<unknown> };
             MerkleLeaves: {
                 getValue(index: number): Promise<string | { asHex(): string } | undefined>;
             };
@@ -86,6 +87,39 @@ export async function readIsKnownRoot(
 /** How many leaves the commitment tree holds, over every tree (`ShieldedPool.MerkleTreeSize`). */
 export async function readTreeSize(substrate: SubstrateClient): Promise<number> {
     return Number(await poolReads(substrate).query.ShieldedPool.MerkleTreeSize.getValue());
+}
+
+/**
+ * The first leaf inserted under the memo-format rule (`ShieldedPool.TaggedMemosFromLeaf`,
+ * an `Option<u32>`), or null when the chain has not recorded one. From it on every memo
+ * carries a format byte, so a wallet may skip the trial ECDH for TAGGED leaves that are
+ * not its own.
+ *
+ * Null also when the runtime predates the storage item, or the read fails: a wallet
+ * then decrypts every leaf, which is slower and never misses a note. A value that is
+ * not a u32 throws instead: a wrong leaf would make a wallet skip notes it owns.
+ */
+export async function readTaggedMemosFromLeaf(substrate: SubstrateClient): Promise<number | null> {
+    let raw: unknown;
+    try {
+        raw = await poolReads(substrate).query.ShieldedPool.TaggedMemosFromLeaf.getValue();
+    } catch {
+        return null;
+    }
+    return decodeOptionU32(raw, 'ShieldedPool.TaggedMemosFromLeaf');
+}
+
+/**
+ * A decoded `Option<u32>`: `undefined` (PAPI's None) or `null` is null; a number or
+ * bigint in u32 range is itself; anything else throws, so a malformed value never
+ * becomes a number (`Number('7')` or `Number(true)` would).
+ */
+function decodeOptionU32(raw: unknown, item: string): number | null {
+    if (raw === undefined || raw === null) return null;
+    const value =
+        typeof raw === 'number' ? raw : typeof raw === 'bigint' ? Number(raw) : Number.NaN;
+    assertU32(value, item);
+    return value;
 }
 
 /**

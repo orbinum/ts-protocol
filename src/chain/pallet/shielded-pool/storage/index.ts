@@ -1,1 +1,8 @@
-export { readPendingFees, readMinSpendFee, readIsKnownRoot, readTreeSize, readLeaf } from './reads';
+export {
+    readPendingFees,
+    readMinSpendFee,
+    readIsKnownRoot,
+    readTreeSize,
+    readLeaf,
+    readTaggedMemosFromLeaf,
+} from './reads';

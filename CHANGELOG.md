@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-17
+
+### Added
+
+- The memo format byte (`MEMO_FORMAT_OFFSET`, `MEMO_FORMAT_TAGGED`, `MEMO_FORMAT_HANDSHAKE`,
+  `MEMO_TAG_OFFSET`, `MEMO_TAG_SIZE`, `memoFormatOf`, type `MemoFormatByte`): nonce byte 1
+  says how a memo's owner finds it, by trial ECDH (HANDSHAKE) or without one (TAGGED). The
+  chain enforces it from `ShieldedPool.TaggedMemosFrom` on. `memoFormatOf` is null for
+  anything but a full 180-byte `Uint8Array`, as the pallet reads it.
+- `shieldedPool.taggedMemosFromLeaf()` / `readTaggedMemosFromLeaf`: the first leaf under that
+  rule, or null while none is recorded (also on a runtime without the item, or when the read
+  fails). A value that is not a u32 throws rather than becoming a leaf index.
+
+### Changed
+
+- `MemoFormat.dummy()` carries the TAGGED format byte (was all zeros), so the chain still
+  accepts it once the format is enforced.
+
 ## [0.17.0] - 2026-11-15
 
 `@orbinum/protocol` becomes the one client every Orbinum program shares: the formulas

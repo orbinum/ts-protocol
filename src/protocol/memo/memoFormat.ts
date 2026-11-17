@@ -8,6 +8,17 @@
  * a note and opening one are custody, and live in the wallet, not here.
  *
  *   layout: nonce(12) || ciphertext+MAC(136) || ephPk(32) = 180
+ *
+ * The nonce is public. Its first bytes carry the memo FORMAT, which the chain
+ * enforces from `ShieldedPool.TaggedMemosFrom` on:
+ *
+ *   nonce[0]      view tag (opaque to the chain)
+ *   nonce[1]      format: MEMO_FORMAT_TAGGED or MEMO_FORMAT_HANDSHAKE
+ *   nonce[2..10]  detection tag (opaque to the chain)
+ *
+ * HANDSHAKE: found by trial ECDH. TAGGED: found by its owner without one, so a
+ * wallet skips the ECDH for every TAGGED leaf from `TaggedMemosFromLeaf` on that
+ * is not its own. How a tag is derived is custody and lives in the wallet.
  */
 import { BABYJUB_SUBORDER } from '../../foundation/crypto/constants';
 
@@ -17,6 +28,34 @@ const EPH_PK_SIZE = 32;
 
 /** Total size of an on-chain encrypted memo, in bytes. */
 export const ENCRYPTED_MEMO_SIZE = NONCE_SIZE + CIPHERTEXT_SIZE + EPH_PK_SIZE; // 180
+
+// The format byte and its values mirror the pallet (`pallet-shielded-pool`,
+// `types/memo.rs`: `MEMO_FORMAT_BYTE_INDEX`, `MEMO_FORMAT_TAGGED`,
+// `MEMO_FORMAT_HANDSHAKE`); a test pins them, so change both or neither.
+
+/** Offset of the format byte in a memo (inside the public nonce). */
+export const MEMO_FORMAT_OFFSET = 1;
+/** Offset and size of the detection tag in a memo (inside the public nonce, after the format byte). */
+export const MEMO_TAG_OFFSET = 2;
+export const MEMO_TAG_SIZE = 8;
+/** Found by its owner without trial ECDH. */
+export const MEMO_FORMAT_TAGGED = 0x01;
+/** Found by trial ECDH. */
+export const MEMO_FORMAT_HANDSHAKE = 0x02;
+
+/** A format byte the chain accepts. */
+export type MemoFormatByte = typeof MEMO_FORMAT_TAGGED | typeof MEMO_FORMAT_HANDSHAKE;
+
+/**
+ * A memo's format byte when it is one the chain accepts, else null: a legacy memo
+ * (any other byte), or anything that is not a full 180-byte memo, as the pallet's
+ * `EncryptedMemo::format` reads it.
+ */
+export function memoFormatOf(memo: Uint8Array): MemoFormatByte | null {
+    if (!(memo instanceof Uint8Array) || memo.length !== ENCRYPTED_MEMO_SIZE) return null;
+    const format = memo[MEMO_FORMAT_OFFSET];
+    return format === MEMO_FORMAT_TAGGED || format === MEMO_FORMAT_HANDSHAKE ? format : null;
+}
 
 /**
  * Reduce 32 bytes to a usable BabyJubJub scalar.
@@ -56,8 +95,13 @@ export const MemoFormat = {
         }
     },
 
-    /** A 180-byte zeroed dummy memo (no information, always valid on-chain). */
+    /**
+     * A 180-byte dummy memo (no information): zeros but the TAGGED format byte,
+     * so the chain accepts it once the format is enforced and scanners skip it.
+     */
     dummy(): Uint8Array {
-        return new Uint8Array(ENCRYPTED_MEMO_SIZE);
+        const memo = new Uint8Array(ENCRYPTED_MEMO_SIZE);
+        memo[MEMO_FORMAT_OFFSET] = MEMO_FORMAT_TAGGED;
+        return memo;
     },
 } as const;

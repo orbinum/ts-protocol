@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { NominationPoolsModule } from '../../../../src/chain/pallet/nomination-pools/NominationPoolsModule';
 import type { SubstrateClient } from '../../../../src/chain/substrate/SubstrateClient';
 import { createWithPoolIdCallArgs } from '../../../../src/chain/pallet/nomination-pools/calls/callArgs';
+import { poolAccounts } from '../../../../src/chain/pallet/nomination-pools/accounts';
 
 const ALICE = '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY';
 const BOB = '5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty';
@@ -14,8 +15,9 @@ const FINALIZED_OK: unknown = { txHash: '0xabc', ok: true, block: { hash: '0xb',
  * A client whose `unsafe.tx.NominationPools.<call>` records its arguments; `candidates`
  * validate; `reads` adds the UnsafeApi's `query` and `apis`.
  */
-const POOL_BONDED = '5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy';
-const POOL_REWARD = '5HGjWAeFDfFCWPsjFQdVV2Msvz2XtMktvgocEZcCj68kUMaw';
+// Pool 1's accounts, derived as the pallet does.
+const POOL_BONDED = poolAccounts(1).bonded;
+const POOL_REWARD = poolAccounts(1).reward;
 
 function txClient(candidates: string[] = [ALICE, BOB], reads: Record<string, unknown> = {}) {
     const entries: Record<string, ReturnType<typeof vi.fn>> = {};
@@ -321,8 +323,9 @@ describe('NominationPoolsModule reads', () => {
         const { module, apis } = poolClient(RAW_POOL, { targets: [ALICE], submitted_in: 4 });
         expect(await module.pool(1)).toEqual({
             ...POOL_SUMMARY,
-            bondedAccount: ALICE,
-            rewardAccount: BOB,
+            // Derived from the pool id, as the pallet does: no runtime call before the reads.
+            bondedAccount: poolAccounts(1).bonded,
+            rewardAccount: poolAccounts(1).reward,
             balance: 149n * ORB,
             nominations: [ALICE],
             // 5% of the 1 000 planck paid since the last record (1 000 + 7 + 1 - 8), plus 2 pending.
@@ -333,7 +336,7 @@ describe('NominationPoolsModule reads', () => {
                 commissionClaimed: 1n,
             },
         });
-        expect(apis.pool_accounts).toHaveBeenCalledWith(1, { at: 'best' });
+        expect(apis.pool_accounts).not.toHaveBeenCalled();
     });
 
     it('reads a pool that takes no commission and does not nominate', async () => {
@@ -449,7 +452,8 @@ describe('NominationPoolsModule reads', () => {
     });
 
     it('reads the deferred slashes that reach a pool: those naming its bonded account', async () => {
-        const POOL_STASH = ALICE;
+        // Pool 1's bonded account, derived as the pallet does.
+        const POOL_STASH = poolAccounts(1).bonded;
         const slash = (validator: string, others: [string, bigint][]) => ({
             validator,
             own: 0n,

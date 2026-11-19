@@ -114,6 +114,16 @@ describe('SubstrateClient.connect', () => {
         );
     });
 
+    it('gives the socket as long to open as the whole connect, not the PAPI default of 5 s', async () => {
+        // A distant or busy node can take longer than 5 s to finish the handshake; PAPI
+        // would drop it and start another from scratch, so the connect never landed.
+        await SubstrateClient.connect('ws://localhost:9944', 12_000);
+        expect(vi.mocked(getWsProvider)).toHaveBeenLastCalledWith(
+            'ws://localhost:9944',
+            expect.objectContaining({ timeout: 12_000 })
+        );
+    });
+
     it('calls createClient with the provider', async () => {
         await makeClient();
         expect(vi.mocked(createClient)).toHaveBeenCalledWith('mock-provider', {});

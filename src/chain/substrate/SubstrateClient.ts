@@ -79,7 +79,11 @@ export class SubstrateClient {
         // Keep PAPI's WebSocket heartbeat active so idle connections are not dropped
         // by intermediaries (e.g. Cloudflare). A 30s heartbeat stays well below the
         // typical idle timeout and prevents unnecessary reconnects.
-        const provider = getWsProvider(wsUrl, { heartbeatTimeout: 30_000 });
+        //
+        // The socket may take as long to open as the whole connect is given. PAPI's own
+        // default (5 s) drops a handshake still under way to a distant or busy node and
+        // starts another from scratch, so a slow first connection never completes.
+        const provider = getWsProvider(wsUrl, { heartbeatTimeout: 30_000, timeout: timeoutMs });
         const papi = createClient(
             provider,
             options.metadataCache ? guardedMetadataCache(options.metadataCache, wsUrl) : {}

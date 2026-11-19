@@ -20,6 +20,7 @@ import type {
     PoolSummary,
 } from '../types/index';
 import { parsePoolMetadata } from '../metadata';
+import { poolAccounts } from '../accounts';
 
 type Enum<T extends string, V = undefined> = { type: T; value: V };
 type Num = bigint | number | string;
@@ -208,19 +209,19 @@ export async function readPool(substrate: SubstrateClient, id: number): Promise<
     assertU32(id, 'pools.pool.poolId');
     const { query, apis } = reads(substrate);
     const q = query.NominationPools;
-    const [bonded, reward, metadata, [bondedAccount, rewardAccount], balance] = await Promise.all([
-        q.BondedPools.getValue(id, BEST),
-        q.RewardPools.getValue(id, BEST),
-        q.Metadata.getValue(id, BEST),
-        apis.NominationPoolsApi.pool_accounts(id, BEST),
-        apis.NominationPoolsApi.pool_balance(id, BEST),
-    ]);
+    // The pool's accounts are derived, not asked for: every read goes out at once.
+    const { bonded: bondedAccount, reward: rewardAccount } = poolAccounts(id);
+    const [bonded, reward, metadata, balance, nominations, rewardBalance, globalMax] =
+        await Promise.all([
+            q.BondedPools.getValue(id, BEST),
+            q.RewardPools.getValue(id, BEST),
+            q.Metadata.getValue(id, BEST),
+            apis.NominationPoolsApi.pool_balance(id, BEST),
+            query.Staking.Nominators.getValue(bondedAccount, BEST),
+            readSpendable(substrate, rewardAccount),
+            q.GlobalMaxCommission.getValue(BEST),
+        ]);
     if (!bonded) return null;
-    const [nominations, rewardBalance, globalMax] = await Promise.all([
-        query.Staking.Nominators.getValue(bondedAccount, BEST),
-        readSpendable(substrate, rewardAccount),
-        q.GlobalMaxCommission.getValue(BEST),
-    ]);
     const pool = summary(id, bonded, metadata);
     const totals = {
         rewardBalance,
@@ -328,8 +329,7 @@ export async function readPoolBondedAccount(
     id: number
 ): Promise<string> {
     assertU32(id, 'pools.poolId');
-    const [bonded] = await reads(substrate).apis.NominationPoolsApi.pool_accounts(id, BEST);
-    return bonded;
+    return poolAccounts(id).bonded;
 }
 
 /**
@@ -343,11 +343,9 @@ export async function readPoolPendingSlashes(
     id: number
 ): Promise<PoolPendingSlash[]> {
     assertU32(id, 'pools.pendingSlashes.poolId');
-    const { query, apis } = reads(substrate);
-    const [[bonded], entries] = await Promise.all([
-        apis.NominationPoolsApi.pool_accounts(id, BEST),
-        query.Staking.UnappliedSlashes.getEntries(BEST),
-    ]);
+    const { query } = reads(substrate);
+    const bonded = poolAccounts(id).bonded;
+    const entries = await query.Staking.UnappliedSlashes.getEntries(BEST);
     const hits = entries.flatMap(({ keyArgs: [era, [validator, fraction]], value }) => {
         const hit = value?.others.find(([who]) => who === bonded);
         return hit ? [{ era, validator, fraction, amount: BigInt(hit[1]) }] : [];

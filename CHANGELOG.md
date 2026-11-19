@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-11-19
+
+### Fixed
+
+- A connection to a distant or busy node no longer restarts its handshake every 5 s. PAPI's
+  WebSocket provider gives a socket 5 s to open and otherwise drops it and opens another
+  from scratch, so a node whose handshake took longer was never reached and every read
+  waiting on the client failed after `connectTimeoutMs`. `SubstrateClient.connect` now
+  gives the socket the whole connect timeout (15 s by default).
+
+### Changed
+
+- `pools.pool(id)` reads everything at once: the pool's bonded and reward accounts are
+  derived from its id, as the pallet does (`poolAccounts`), instead of asked for with the
+  `pool_accounts` runtime call before the nominations and the reward balance could be read.
+  One round trip instead of two per pool. `pools.pendingSlashes` and the bonded account a
+  `nominate` checks are derived the same way.
+
 ## [0.18.1] - 2026-11-19
 
 Event field names for runtime spec 24. Types only: `MIN_SPEC_VERSION` stays 22, so this

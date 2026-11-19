@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-19
+
+Event field names for runtime spec 24. Types only: `MIN_SPEC_VERSION` stays 22, so this
+release works against spec 22 to 24 chains alike (a field a runtime does not emit simply
+reads as absent).
+
+### Changed
+
+- `EVENT_FIELDS` regenerated from runtime spec 24 (`EVENT_FIELDS_SPEC` 24, was 22).
+  `PrivateStaking.Entered`, `Exited`, `EntrySettled`, `EntryRefunded` and `ExitSettled`
+  name the entry's or exit's one-time `owner_pk`, and `Compounded` the share `value` and
+  `supply` after the era. Also picks up spec 23's `ShieldedPool.TaggedMemosScheduled`
+  (`from`) and `TaggedMemosActivated` (`from_leaf`), missing from the spec 22 list.
+
 ## [0.18.0] - 2026-11-17
 
 ### Added

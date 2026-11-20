@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.3] - 2026-11-20
+
+### Added
+
+- `OrbinumClientProvider` reports a socket that reopens under the live client. PAPI
+  reconnects its WebSocket on its own after a drop too short for the heartbeat to notice,
+  and nothing reported it: the node could restart, even on another build, with the
+  provider still `'connected'` throughout. Listeners now hear `'connected'` again with
+  `resumed: true`, and the status does not change. A host that checks something about the
+  node on connect (its version, its chain) checks it again then.
+- `onSocketReopen` on `OrbinumClient.connect` and `SubstrateClient.connect`: called each
+  time the socket opens again after the first open.
+
 ## [0.18.2] - 2026-11-19
 
 ### Fixed

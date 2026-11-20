@@ -137,6 +137,7 @@ export class OrbinumClient {
             ? SubstrateClient.adopt(config.papi, config.substrateHttp)
             : await SubstrateClient.connect(config.substrateWs, config.connectTimeoutMs ?? 15_000, {
                   metadataCache: config.metadataCache,
+                  onSocketReopen: config.onSocketReopen,
               });
         try {
             await assertSupportedRuntime(substrate);

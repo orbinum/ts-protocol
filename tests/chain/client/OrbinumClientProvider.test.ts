@@ -232,6 +232,44 @@ describe('OrbinumClientProvider.onStatusChange', () => {
     });
 });
 
+// ─── Socket reopened under the live client ──────────────────────────────────
+
+describe('OrbinumClientProvider: a socket that reopens on its own', () => {
+    /** The `onSocketReopen` the provider handed its last `OrbinumClient.connect`. */
+    const reopen = () =>
+        (
+            vi.mocked(OrbinumClient.connect).mock.calls.at(-1)![0] as { onSocketReopen: () => void }
+        ).onSocketReopen();
+
+    it("tells listeners 'connected' again, marked resumed, without changing the status", async () => {
+        vi.mocked(OrbinumClient.connect).mockResolvedValue(makeOrbinumClient());
+        const provider = makeProvider();
+        const events: unknown[] = [];
+        provider.onStatusChange((ev) => events.push(ev));
+        provider.connect();
+        await provider.getOrbinumClient();
+        events.length = 0;
+
+        reopen();
+        expect(events).toEqual([{ status: 'connected', resumed: true }]);
+        expect(provider.status).toBe<ConnectionStatus>('connected');
+    });
+
+    it('stays quiet for a client no longer in use', async () => {
+        vi.mocked(OrbinumClient.connect).mockResolvedValue(makeOrbinumClient());
+        const provider = makeProvider();
+        provider.connect();
+        await provider.getOrbinumClient();
+        const events: unknown[] = [];
+        provider.onStatusChange((ev) => events.push(ev));
+
+        provider.reset();
+        events.length = 0;
+        reopen();
+        expect(events).toEqual([]);
+    });
+});
+
 // ─── reset() ─────────────────────────────────────────────────────────────────
 
 describe('OrbinumClientProvider.reset', () => {

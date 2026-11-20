@@ -34,6 +34,12 @@ export type OrbinumClientConfig = OrbinumClientCommon &
               connectTimeoutMs?: number;
               /** Keeps the runtime metadata between connections (`MetadataCache`). */
               metadataCache?: MetadataCache;
+              /**
+               * Called each time the WebSocket reopens after the first open: PAPI
+               * reconnected on its own after a drop. The node may have restarted,
+               * possibly on another build.
+               */
+              onSocketReopen?: () => void;
               substrateHttp?: never;
           }
         | {
@@ -42,6 +48,7 @@ export type OrbinumClientConfig = OrbinumClientCommon &
               papi: PolkadotClient;
               connectTimeoutMs?: never;
               metadataCache?: never;
+              onSocketReopen?: never;
               /** HTTP RPC endpoint enabling `batchRequest`. Optional. */
               substrateHttp?: string;
           }

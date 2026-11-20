@@ -1,6 +1,6 @@
 import { createClient, Binary, type PolkadotClient, type TxFinalizedPayload } from 'polkadot-api';
 import type { SignerTxCreator as SubstrateSigner } from 'polkadot-api/tx-creator';
-import { getWsProvider } from 'polkadot-api/ws';
+import { getWsProvider, WsEvent } from 'polkadot-api/ws';
 import { guardedMetadataCache, type MetadataCache } from './metadataCache';
 import { fromHex } from '../../foundation/encoding/hex';
 import { jsonRpcBatch, wsUrlToHttp, type JsonRpcCall } from '../rpc/jsonRpcHttp';
@@ -70,11 +70,18 @@ export class SubstrateClient {
      * Connects to the Orbinum node via WebSocket.
      * Throws if the node does not respond within `timeoutMs`. With `metadataCache`, the
      * runtime metadata is read from it when the runtime is unchanged, and stored when not.
+     *
+     * `onSocketReopen` is called each time the socket opens again after the
+     * first: PAPI reconnects on its own after a drop, and nothing else reports
+     * it. The node may have restarted in between, possibly on another build.
      */
     static async connect(
         wsUrl: string,
         timeoutMs = 15_000,
-        options: { metadataCache?: MetadataCache | undefined } = {}
+        options: {
+            metadataCache?: MetadataCache | undefined;
+            onSocketReopen?: (() => void) | undefined;
+        } = {}
     ): Promise<SubstrateClient> {
         // Keep PAPI's WebSocket heartbeat active so idle connections are not dropped
         // by intermediaries (e.g. Cloudflare). A 30s heartbeat stays well below the
@@ -83,7 +90,16 @@ export class SubstrateClient {
         // The socket may take as long to open as the whole connect is given. PAPI's own
         // default (5 s) drops a handshake still under way to a distant or busy node and
         // starts another from scratch, so a slow first connection never completes.
-        const provider = getWsProvider(wsUrl, { heartbeatTimeout: 30_000, timeout: timeoutMs });
+        let opened = false;
+        const provider = getWsProvider(wsUrl, {
+            heartbeatTimeout: 30_000,
+            timeout: timeoutMs,
+            onStatusChanged: (status) => {
+                if (status.type !== WsEvent.CONNECTED) return;
+                if (opened) options.onSocketReopen?.();
+                opened = true;
+            },
+        });
         const papi = createClient(
             provider,
             options.metadataCache ? guardedMetadataCache(options.metadataCache, wsUrl) : {}

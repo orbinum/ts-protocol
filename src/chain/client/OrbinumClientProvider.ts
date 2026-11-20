@@ -31,6 +31,14 @@ export type StatusChangeEvent = {
     status: ConnectionStatus;
     /** Why the connection dropped. Only on `'disconnected'`. */
     error?: string;
+    /**
+     * Only on `'connected'`, and only when the status did not change: the
+     * socket under the live client reopened. PAPI reconnects on its own after
+     * a drop too short for the heartbeat to notice, so this is the one sign of
+     * it. The node may have restarted in between, possibly on another build:
+     * whatever a host checked about the node on connect, it checks again here.
+     */
+    resumed?: true;
 };
 
 export type StatusListener = (event: StatusChangeEvent) => void;
@@ -171,7 +179,10 @@ export class OrbinumClientProvider {
      */
     private setStatus(status: ConnectionStatus, error?: string): void {
         this._status = status;
-        const event: StatusChangeEvent = { status, ...(error ? { error } : {}) };
+        this.emit({ status, ...(error ? { error } : {}) });
+    }
+
+    private emit(event: StatusChangeEvent): void {
         this._listeners.forEach((fn) => {
             try {
                 fn(event);
@@ -251,6 +262,7 @@ export class OrbinumClientProvider {
         });
 
         let clientPromise: Promise<OrbinumClient> | null = null;
+        let own: OrbinumClient | null = null;
         try {
             const connectConfig: OrbinumClientConfig = {
                 substrateWs: this.config.substrateWs,
@@ -259,6 +271,12 @@ export class OrbinumClientProvider {
             if (this.config.evmRpc) connectConfig.evmRpc = this.config.evmRpc;
             if (this.config.evmRpcPeer) connectConfig.evmRpcPeer = this.config.evmRpcPeer;
             if (this.config.metadataCache) connectConfig.metadataCache = this.config.metadataCache;
+            // Only the live client's socket speaks: not one a reset, a timeout
+            // or a reconnect has since replaced.
+            connectConfig.onSocketReopen = () => {
+                if (own && this._orbinumClient === own && this._status === 'connected')
+                    this.emit({ status: 'connected', resumed: true });
+            };
             clientPromise = OrbinumClient.connect(connectConfig);
             const client = await Promise.race([clientPromise, timeoutPromise]);
             orphanClient = client;
@@ -269,6 +287,7 @@ export class OrbinumClientProvider {
             orphanClient = null;
 
             this._orbinumClient = client;
+            own = client;
             this._connectingPromise = null;
             this.setStatus('connected');
             this.startHeartbeat();

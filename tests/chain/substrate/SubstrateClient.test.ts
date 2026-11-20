@@ -6,6 +6,7 @@ import { buildDataProxy, toEventRecords } from '../../../src/chain/substrate/eve
 
 vi.mock('polkadot-api/ws', () => ({
     getWsProvider: vi.fn().mockReturnValue('mock-provider'),
+    WsEvent: { CONNECTING: 'CONNECTING', CONNECTED: 'CONNECTED', ERROR: 'ERROR', CLOSE: 'CLOSE' },
 }));
 
 vi.mock('polkadot-api', () => ({
@@ -122,6 +123,25 @@ describe('SubstrateClient.connect', () => {
             'ws://localhost:9944',
             expect.objectContaining({ timeout: 12_000 })
         );
+    });
+
+    it('reports each time the socket reopens after the first open, and only then', async () => {
+        const onSocketReopen = vi.fn();
+        await SubstrateClient.connect('ws://localhost:9944', 1_000, { onSocketReopen });
+        const { onStatusChanged } = vi.mocked(getWsProvider).mock.calls.at(-1)![1] as {
+            onStatusChanged: (s: { type: string }) => void;
+        };
+        onStatusChanged({ type: 'CONNECTING' });
+        onStatusChanged({ type: 'CONNECTED' }); // the first open: the connect itself
+        expect(onSocketReopen).not.toHaveBeenCalled();
+
+        // PAPI drops and reopens the socket on its own.
+        onStatusChanged({ type: 'CLOSE' });
+        onStatusChanged({ type: 'CONNECTING' });
+        onStatusChanged({ type: 'CONNECTED' });
+        onStatusChanged({ type: 'CLOSE' });
+        onStatusChanged({ type: 'CONNECTED' });
+        expect(onSocketReopen).toHaveBeenCalledTimes(2);
     });
 
     it('calls createClient with the provider', async () => {

@@ -1,8 +1,8 @@
+import { assertBoundAction } from '../../../../../protocol/bound/index';
 import { MemoFormat } from '../../../../../protocol/memo/memoFormat';
-import { TRANSFER_INPUTS, TRANSFER_OUTPUTS } from '../../constants';
+import { NATIVE_ASSET_ID, TRANSFER_INPUTS, TRANSFER_OUTPUTS } from '../../constants';
 import type { BoundSpendParams, PrivateTransferParams, UnshieldParams } from '../../types/params';
 import {
-    assertFieldKey,
     assertHash,
     assertPositiveU128,
     assertProof,
@@ -40,19 +40,16 @@ export function assertUnshieldParams(params: UnshieldParams, where: string): voi
 
 /**
  * `bound_spend`: an unshield's arguments, without a recipient (the action's executor),
- * and an action whose keys are non-zero canonical field elements, as the runtime
- * requires of the note it mints.
+ * and an action the runtime accepts (see `assertBoundAction`). A private call spends
+ * ORB, and its steps send no more than the amount.
  */
 export function assertBoundSpendParams(params: BoundSpendParams, where: string): void {
     assertUnshieldParams({ ...params, recipientAddress: '' }, where);
-    const action = params.action;
-    if (action?.type !== 'PrivateStaking') throw new Error(`${where}.action: unknown action`);
-    const { type, value } = action.value;
-    if (type !== 'Enter' && type !== 'Exit') throw new Error(`${where}.action: unknown action`);
-    assertU32(value.poolId, `${where}.action.poolId`);
-    assertFieldKey(value.ownerPk, `${where}.action.ownerPk`);
-    assertFieldKey(value.blinding, `${where}.action.blinding`);
-    assertU128(type === 'Enter' ? value.minShares : value.minValue, `${where}.action.min`);
+    const { action } = params;
+    if (action?.type === 'PrivateCall' && BigInt(params.assetId) !== NATIVE_ASSET_ID) {
+        throw new Error(`${where}.assetId: a private call spends ORB (asset ${NATIVE_ASSET_ID})`);
+    }
+    assertBoundAction(action, `${where}.action`, params.amount);
 }
 
 /**

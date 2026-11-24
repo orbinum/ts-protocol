@@ -169,6 +169,8 @@ export type AssetUnverifiedEvent = {
 /**
  * Emitted by every spend with a non-zero fee: the fee is
  * credited to the block author's validator account, pending until claimed.
+ * For a private call, `amount` is the fee less its gas, which goes to the era
+ * fee pool instead.
  * Rust variant: `FeeCredited { validator, asset_id, amount }`
  */
 export type FeeCreditedEvent = {

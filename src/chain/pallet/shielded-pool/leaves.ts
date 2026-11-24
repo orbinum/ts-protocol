@@ -9,43 +9,15 @@
  * The events come from a node and are trusted no further than a leaf index: a wrong
  * one fails a check against the node's root before any path is built from it.
  */
-import { isHexOfLength } from '../../../foundation/encoding/hex';
 import { isValidLeafIndex } from '../../../protocol/spend/index';
 import { mapZkEventData } from '../../substrate/extrinsic/index';
 import type { EventRecord } from '../../substrate/types/index';
-
-/** A decoded field as plain data: codec values serialise through `toJSON`. */
-function plain(value: unknown): unknown {
-    return value !== null && typeof value === 'object' && 'toJSON' in value
-        ? (value as { toJSON(): unknown }).toJSON()
-        : value;
-}
+import { hash32, integerOf, plain } from '../events/index';
 
 function leafIndexOf(value: unknown): number | null {
     const raw = plain(value);
     const n = typeof raw === 'bigint' ? Number(raw) : typeof raw === 'string' ? Number(raw) : raw;
     return typeof n === 'number' && isValidLeafIndex(n) ? n : null;
-}
-
-/** A commitment as lowercase `0x` hex (32 bytes), or null. */
-function commitmentKey(value: unknown): string | null {
-    const raw = plain(value);
-    if (typeof raw !== 'string' || !raw.startsWith('0x')) return null;
-    const hex = raw.toLowerCase();
-    return isHexOfLength(hex, 32) ? hex : null;
-}
-
-/** An integer field as a bigint (from a bigint, a number, or hex or decimal text), or null. */
-function integerOf(value: unknown): bigint | null {
-    const raw = plain(value);
-    if (typeof raw === 'bigint') return raw;
-    if (typeof raw === 'number' && !Number.isSafeInteger(raw)) return null;
-    if (typeof raw !== 'number' && typeof raw !== 'string') return null;
-    try {
-        return BigInt(raw);
-    } catch {
-        return null;
-    }
 }
 
 /** A note the chain minted itself (`NoteMinted`), as plain data. */
@@ -66,7 +38,7 @@ export function mintedLeaves(events: readonly EventRecord[]): MintedLeaf[] {
         if (typeof method !== 'string' || method.toLowerCase() !== 'noteminted') continue;
         if (!data || typeof data !== 'object') continue;
         const mapped = mapZkEventData(method, data as unknown as Record<string, unknown>, section);
-        const commitment = commitmentKey(mapped['commitment']);
+        const commitment = hash32(mapped['commitment']);
         const leafIndex = leafIndexOf(mapped['index']);
         const assetId = integerOf(mapped['asset_id']);
         const value = integerOf(mapped['value']);
@@ -83,7 +55,7 @@ export function mintedLeaves(events: readonly EventRecord[]): MintedLeaf[] {
 export function insertedLeaves(events: readonly EventRecord[]): Map<string, number> {
     const leaves = new Map<string, number>();
     const put = (commitment: unknown, leaf: unknown) => {
-        const key = commitmentKey(commitment);
+        const key = hash32(commitment);
         const at = leafIndexOf(leaf);
         if (key !== null && at !== null && !leaves.has(key)) leaves.set(key, at);
     };

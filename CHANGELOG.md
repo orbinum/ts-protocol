@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-23
+
+For runtime spec 25.
+
+### Added
+
+- Private calls: `BoundAction` gains `{ type: 'PrivateCall', value: PrivateCallRequest }`
+  (variant 1 of the runtime's `BoundAction`). A request carries a deadline, a gas limit,
+  up to 8 steps (`PrivateCallStep`: a 20-byte `target`, calldata `input` and the ORB
+  `value` sent), the least ORB that must come back (`minReturn`) and the one-time key and
+  blinding of the note minted with what the executor holds after the steps.
+  `encodeBoundAction`, `boundActionArg`, `decodeBoundAction` and `boundSpendDigest` take it;
+  its encoding matches the runtime's vector (`the_action_encodes_as_clients_hash_it`).
+  `client.shieldedPool.boundSpend` submits it as any bound spend, refusing an asset other
+  than ORB and steps that send more than the amount.
+- `PRIVATE_CALL_EXECUTOR` (`H160("orbinum/private-call")`) and
+  `PRIVATE_CALL_EXECUTOR_ACCOUNT_ID`, the spend's recipient; `PRIVATE_CALL_MAX_STEPS` and
+  `PRIVATE_CALL_MAX_INPUT`.
+- `privateCallIntrinsicGas(steps)`: 21 000 per step and 4 or 16 gas per calldata byte. The
+  runtime refuses a gas limit below it, so the fee grows with the call's size.
+  `privateCallMinFee(gasLimit, gasPrice, minSpendFee)`: the fee floor, the whole gas limit
+  at the price on top of `MinSpendFee`.
+- `assertPrivateCallTerms(terms, where, amount?)`: what the runtime refuses of a call's
+  terms (deadline, gas limit, steps, `minReturn`), before a proof is paid for and before
+  a key is reserved for its output; `assertPrivateCallRequest` adds the key and blinding.
+  `PrivateCallTerms` is the request without them.
+- `assertBoundAction(action, where, amount?)`: what the runtime refuses of any bound
+  action; `client.shieldedPool.boundSpend` runs it.
+- `simulatePrivateCall(evm, steps, amount)`: each step as an `eth_call` from the executor
+  holding `amount` (a state override), with its return data or the node's error. Steps
+  are simulated one by one on the same state, not in sequence.
+- `PRIVATE_CALL_MAX_GAS` (18 750 000, a quarter of a block's gas): `assertPrivateCallRequest`
+  refuses a gas limit above it, as the runtime does.
+- `estimatePrivateCallGas(evm, steps, amount)`: the least gas each step succeeds with from
+  the executor holding `amount`, searched over `eth_call`'s gas (`eth_estimateGas` takes no
+  state override); within 1/64 above the least. `privateCallGasLimit(stepGas)` turns it
+  into the call's gas limit: the runtime shares the limit by a bound on each step's gross
+  gas, so every step but the last counts its gas and a quarter more.
+- A private call's fee is split by the runtime: its gas goes to the era fee pool and
+  `FeeCredited` carries only the rest. `privateCallMinFee` is unchanged.
+- `EVENT_FIELDS.PrivateCall.Executed`: `success`, `gas_used`, `value`, `commitment`.
+- `privateCallOutcome(events)`: a block's `PrivateCall.Executed` as `{ success, gasUsed,
+  value, commitment }`, by field name or position; null without one.
+
+### Changed
+
+- `BoundAction` is a union of `PrivateStaking` and `PrivateCall`: code that reads
+  `action.value.value` must narrow on `action.type` first.
+- A bound action's integer errors name the type: `expected a uint32`, `a uint64`,
+  `a uint128`; a private staking minimum names its field (`minShares`, `minValue`).
+
 ## [0.19.0] - 2026-11-22
 
 For runtime spec 25.

@@ -55,6 +55,7 @@ export * from './chain/pallet/shielded-pool/index';
 export * from './chain/pallet/staking/index';
 export * from './chain/pallet/nomination-pools/index';
 export * from './chain/pallet/private-staking/index';
+export * from './chain/pallet/private-call/index';
 export * from './chain/pallet/zk-verifier/index';
 export * from './chain/pallet/ismp/index';
 export {
@@ -76,7 +77,12 @@ export type { TxLandingPollOptions } from './chain/txRecovery';
 // The EVM side is named rather than splatted: its `precompiles/` barrel also
 // carries the ABI encoder/decoder it uses internally, and a consumer has no
 // reason to reach for `decodeUint` or a raw selector constant.
-export { EvmClient, EvmExplorer } from './chain/evm/index';
+export {
+    EvmClient,
+    EvmExplorer,
+    estimatePrivateCallGas,
+    simulatePrivateCall,
+} from './chain/evm/index';
 export type {
     EvmBlock,
     EvmTransaction,
@@ -85,6 +91,8 @@ export type {
     EvmLog,
     EvmSigner,
     EvmTxRequest,
+    PrivateCallStepGas,
+    PrivateCallStepResult,
     TokenInfo,
     TokenTransfer,
 } from './chain/evm/index';

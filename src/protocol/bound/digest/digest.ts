@@ -11,11 +11,10 @@
  */
 import { blake2b } from '@noble/hashes/blake2.js';
 import { Bytes, Vector } from '@polkadot-api/substrate-bindings';
-import { BN254_R } from '../../foundation/crypto/constants';
-import { bytesToBigintLE } from '../../foundation/encoding/bytes';
-import { fromHex } from '../../foundation/encoding/hex';
-import { encodeBoundAction } from './codec';
-import type { BoundAction } from './types';
+import { BN254_R } from '../../../foundation/crypto/constants';
+import { bytesToBigintLE } from '../../../foundation/encoding/bytes';
+import { fromHex } from '../../../foundation/encoding/hex';
+import { encodeBoundAction, type BoundAction } from '../action/index';
 
 /** Domain of a bound spend's `memo_hash`. */
 export const BOUND_SPEND_DOMAIN = 'orbinum:bound-spend:v1';

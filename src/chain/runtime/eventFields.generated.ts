@@ -326,4 +326,7 @@ export const EVENT_FIELDS = {
         PoolClosed: ['pool_id'],
         MinEntrySet: ['amount'],
     },
+    PrivateCall: {
+        Executed: ['success', 'gas_used', 'value', 'commitment'],
+    },
 } as const;

@@ -33,7 +33,9 @@ export type ShieldParams = {
  * Not a parameter anywhere in this module: `unshield` and `private_transfer`
  * are accepted only unsigned, and the runtime credits every spend's `fee` to
  * the validator account of the block's author (`FeeCredited`). The validator
- * withdraws it later with `claim_fees`.
+ * withdraws it later with `claim_fees`. A private call's fee is split: its gas
+ * (gas limit × base price) goes to the era fee pool, like an Ethereum
+ * transaction's base fee, and only the rest is credited to the author.
  *
  * `fee` is a ZK public input, so it cannot be altered without regenerating the
  * proof; it must be at least the runtime's `MinSpendFee`.

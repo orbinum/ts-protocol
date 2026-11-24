@@ -237,6 +237,34 @@ describe('ShieldedPoolModule.boundSpend', () => {
         );
         expect(client._txEntry).not.toHaveBeenCalled();
     });
+
+    it('submits a private call, and refuses one that spends another asset or too little', async () => {
+        const call = {
+            ...SPEND_PARAMS,
+            assetId: 0,
+            amount: 10n,
+            fee: 5n,
+            action: {
+                type: 'PrivateCall' as const,
+                value: {
+                    deadline: 9,
+                    gasLimit: 21_000n,
+                    steps: [
+                        { target: '0x' + 'aa'.repeat(20), input: new Uint8Array(), value: 10n },
+                    ],
+                    minReturn: 0n,
+                    ownerPk: key(1),
+                    blinding: key(2),
+                },
+            },
+        };
+        const client = bareTxClient('bound_spend');
+        const mod = new ShieldedPoolModule(client);
+        expect((await mod.boundSpend(call)).ok).toBe(true);
+        expect(client._txEntry.mock.calls[0]![0].action.value.gas_limit).toBe(21_000n);
+        await expect(mod.boundSpend({ ...call, assetId: 1 })).rejects.toThrow(/assetId/);
+        await expect(mod.boundSpend({ ...call, amount: 9n })).rejects.toThrow(/more than/);
+    });
 });
 
 // ─── unshield ─────────────────────────────────────────────────────────────────

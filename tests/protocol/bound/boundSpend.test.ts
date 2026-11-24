@@ -13,10 +13,16 @@ import { bytesToBigintLE } from '../../../src/foundation/encoding/bytes';
 import { fromHex, toHex } from '../../../src/foundation/encoding/hex';
 
 const key = (b: number) => new Uint8Array(32).fill(b);
-const enter = (minShares = 7n): BoundAction => ({
+const enter = (minShares = 7n): Extract<BoundAction, { type: 'PrivateStaking' }> => ({
     type: 'PrivateStaking',
     value: { type: 'Enter', value: { poolId: 3, ownerPk: key(1), blinding: key(2), minShares } },
 });
+/** A private staking action's call argument, narrowed to its variant. */
+const stakingArg = (action: BoundAction) =>
+    boundActionArg(action) as Extract<
+        ReturnType<typeof boundActionArg>,
+        { type: 'PrivateStaking' }
+    >;
 const GENESIS = '0x43d1d3b788a8dc28082f5c0537d637225dbd1bede574182783207bb3afae200a';
 
 describe('encodeBoundAction', () => {
@@ -54,8 +60,8 @@ describe('bound action checks', () => {
         expect(() => encodeBoundAction(withKey(new Uint8Array(32).fill(0xff)))).toThrow(
             /field element/
         );
-        expect(() => encodeBoundAction(enter(-1n))).toThrow(/u128/);
-        expect(() => encodeBoundAction(enter(1n << 128n))).toThrow(/u128/);
+        expect(() => encodeBoundAction(enter(-1n))).toThrow(/uint128/);
+        expect(() => encodeBoundAction(enter(1n << 128n))).toThrow(/uint128/);
     });
 });
 
@@ -110,7 +116,7 @@ describe('decodeBoundAction', () => {
             JSON.stringify(boundActionArg(action), (_k, v) => (typeof v === 'bigint' ? `${v}` : v))
         );
         expect(decodeBoundAction(json)).toEqual(action);
-        const papi = boundActionArg(action);
+        const papi = stakingArg(action);
         const fixed = { asBytes: () => action.value.value.ownerPk };
         expect(
             decodeBoundAction({
@@ -121,7 +127,7 @@ describe('decodeBoundAction', () => {
     });
 
     it('is null for anything that is not a valid action', () => {
-        const papi = boundActionArg(enter());
+        const papi = stakingArg(enter());
         const body = papi.value.value;
         for (const bad of [
             null,

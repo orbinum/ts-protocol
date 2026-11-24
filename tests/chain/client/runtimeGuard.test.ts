@@ -8,12 +8,12 @@ describe('assertSupportedRuntime', () => {
         await expect(assertSupportedRuntime(node({ specVersion: MIN_SPEC_VERSION }))).resolves.toBe(
             undefined
         );
-        await expect(assertSupportedRuntime(node({ specVersion: 25 }))).resolves.toBe(undefined);
+        await expect(assertSupportedRuntime(node({ specVersion: 26 }))).resolves.toBe(undefined);
     });
 
     it('refuses an older or unreadable runtime version', async () => {
-        await expect(assertSupportedRuntime(node({ specVersion: 21 }))).rejects.toThrow(
-            /spec 21.*spec 22 or later/
+        await expect(assertSupportedRuntime(node({ specVersion: 24 }))).rejects.toThrow(
+            /spec 24.*spec 25 or later/
         );
         await expect(assertSupportedRuntime(node({}))).rejects.toThrow(/Unsupported runtime/);
     });

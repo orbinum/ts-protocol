@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-22
+
+For runtime spec 25.
+
+### Changed
+
+- `PrivatePoolQuote` gains `uncompounded`: the private member's rewards not compounded
+  yet, pending in the pool or paid to its free balance (less its existential deposit,
+  `Escrow` and `EntryEscrow`). `readPrivateQuote` reads them (`NominationPoolsApi.pending_rewards`,
+  `System.Account`, `Balances.ExistentialDeposit`). They belong to the minted shares:
+  `privateShareValue`, `privateSharesFor` and `privateMinFeeShares` price on
+  `netValue + uncompounded` (`privateOwnedValue`, new), as spec 25 does.
+- `privateExitValue` and `privateExitRefusal` follow spec 25's exit: its bonded part, under
+  the same rules as before (join minimum, dust sweep, nominator minimum, `MaxUnbonding`),
+  plus its part of the rewards not compounded yet; an exit taking every minted point
+  takes every reward. The sweep values the other shares on `netValue + uncompounded`.
+- `readNominatorUnbondDuration` and `readStakingConfig` read the unbonding the runtime
+  works out each era (`EraPruning.FastUnbond`): the fast unbond only once no era a slash
+  can still reach had nominators slashable, the full bonding duration otherwise (or when
+  it was worked out for another era or bonding duration). The constant
+  `Staking.NominatorFastUnbondDuration` is no longer read.
+- The shared signed-text vectors (`tests/fixtures/ed25519_text_vectors.json`) are the
+  runtime's for spec 25: the signed payload carries `spec_version`.
+- `MIN_SPEC_VERSION` is 25: the reads above need spec 25's storage. The event field
+  names are spec 25's, unchanged from spec 24.
+
 ## [0.18.3] - 2026-11-20
 
 ### Added

@@ -25,16 +25,22 @@ export type PrivatePool = {
 };
 
 /**
- * What prices a pool's shares now: `value = shares·(netValue + V) / (supply + V)`, never
- * above pro rata, the last shares taking everything left (`netValue`), as the runtime
- * rounds it.
+ * What prices a pool's shares now: `value = shares·(owned + V) / (supply + V)`, never above
+ * pro rata, the last shares taking everything left, where `owned = netValue + uncompounded`
+ * is what the minted shares own, as the runtime rounds it.
  */
 export type PrivatePoolQuote = {
     poolId: number;
     assetId: number;
     supply: bigint;
-    /** What the minted shares are worth: the private member's points less pending entries'. */
+    /** What the minted shares' points are worth: the private member's points less pending entries'. */
     netValue: bigint;
+    /**
+     * The private member's rewards not compounded yet: pending in the pool, or paid to its
+     * free balance (less its existential deposit and what it holds for outputs and entries).
+     * They belong to the minted shares.
+     */
+    uncompounded: bigint;
     /** The runtime's virtual offset `V` (`PrivateStaking.VirtualOffset`). */
     virtualOffset: bigint;
     windDown: PrivateWindDown | null;

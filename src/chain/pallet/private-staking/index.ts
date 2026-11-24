@@ -6,6 +6,11 @@ export {
     privateMemberPoolId,
     privateShareAssetMetadata,
 } from './account';
-export { privateMinFeeShares, privateShareValue, privateSharesFor } from './pricing';
+export {
+    privateMinFeeShares,
+    privateOwnedValue,
+    privateShareValue,
+    privateSharesFor,
+} from './pricing';
 export { privateExitRefusal, privateExitValue } from './redeem';
 export type * from './types/index';

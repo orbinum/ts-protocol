@@ -13,6 +13,7 @@ const quote = (over: Partial<PrivatePoolQuote> = {}): PrivatePoolQuote => ({
     assetId: 7,
     supply: 100n * ORB,
     netValue: 110n * ORB,
+    uncompounded: 0n,
     virtualOffset: ORB,
     windDown: null,
     ...over,
@@ -83,5 +84,36 @@ describe('privateExitRefusal', () => {
         const s = state({ quote: quote({ windDown: wind }) });
         expect(privateExitRefusal(s, 10n * ORB, 0n, 5n * ORB)).toBeNull();
         expect(privateExitRefusal(s, 10n * ORB, 0n, 5n * ORB + 1n)).toBe('BelowMinimumOutput');
+    });
+});
+
+describe('an exit beside rewards not compounded yet', () => {
+    // 10 ORB paid to the private member that no compounding has bonded.
+    const paid = quote({ uncompounded: 10n * ORB });
+
+    it('is paid its bonded part and its part of the rewards', () => {
+        const worth = privateShareValue(paid, 50n * ORB);
+        expect(privateExitValue(paid, 50n * ORB, 0n)).toBe(worth);
+        const s = state({ quote: paid });
+        expect(privateExitRefusal(s, 50n * ORB, 0n, worth)).toBeNull();
+        expect(privateExitRefusal(s, 50n * ORB, 0n, worth + 1n)).toBe('BelowMinimumOutput');
+    });
+
+    it('keeps the join minimum on the bonded part only', () => {
+        // The bonded part leaves half an ORB of the member's 110, as without rewards.
+        const shares = (1095n * ORB * 101n) / (111n * 10n);
+        expect(privateExitRefusal(state({ quote: paid }), shares, 0n, 0n)).toBe(
+            'RemainderBelowMinimum'
+        );
+    });
+
+    it('takes every reward when the last holder sweeps the fee', () => {
+        const s = state({ quote: paid, poolStake: 400n * ORB });
+        const fee = ORB / 100n;
+        // Everything: the 110 bonded and the 10 not compounded, the fee's part included.
+        expect(privateExitRefusal(s, 100n * ORB - fee, fee, 120n * ORB)).toBeNull();
+        expect(privateExitRefusal(s, 100n * ORB - fee, fee, 120n * ORB + 1n)).toBe(
+            'BelowMinimumOutput'
+        );
     });
 });

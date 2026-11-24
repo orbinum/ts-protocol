@@ -3,6 +3,7 @@ import {
     privateMemberAccountId,
     privateMemberAddress,
     privateMinFeeShares,
+    privateOwnedValue,
     privateShareValue,
     privateSharesFor,
     type PrivatePoolQuote,
@@ -14,6 +15,7 @@ const quote = (over: Partial<PrivatePoolQuote> = {}): PrivatePoolQuote => ({
     assetId: 3,
     supply: 100n * ORB,
     netValue: 110n * ORB,
+    uncompounded: 0n,
     virtualOffset: ORB,
     windDown: null,
     ...over,
@@ -69,5 +71,24 @@ describe('share pricing', () => {
         expect(privateShareValue(quote(), fee)).toBeGreaterThanOrEqual(ORB / 100n - 1n);
         expect(privateShareValue(quote(), fee - 1n)).toBeLessThan(ORB / 100n);
         expect(privateMinFeeShares(quote({ supply: 0n, netValue: 10n ** 30n }), 1n)).toBe(1n);
+    });
+});
+
+describe('rewards not compounded yet', () => {
+    // 10 ORB paid to the private member that no compounding has bonded.
+    const paid = quote({ uncompounded: 10n * ORB });
+
+    it('belong to the minted shares', () => {
+        expect(privateOwnedValue(paid)).toBe(120n * ORB);
+        // 10·(120+1)/(100+1) = 11.98… ORB, up from 10.99… without them.
+        expect(privateShareValue(paid, 10n * ORB)).toBe((10n * ORB * 121n) / 101n);
+        expect(privateShareValue(paid, 100n * ORB)).toBe(120n * ORB);
+    });
+
+    it('raise the price an entry and a fee are taken at', () => {
+        expect(privateSharesFor(paid, 11n * ORB)).toBe((11n * ORB * 101n) / 121n);
+        const fee = privateMinFeeShares(paid, ORB / 100n);
+        expect(privateShareValue(paid, fee)).toBeGreaterThanOrEqual(ORB / 100n);
+        expect(privateShareValue(paid, fee - 1n)).toBeLessThan(ORB / 100n);
     });
 });

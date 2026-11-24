@@ -3,29 +3,44 @@ import { PrivateStakingModule } from '../../../../src/chain/pallet/private-staki
 import type { SubstrateClient } from '../../../../src/chain/substrate/SubstrateClient';
 import { readEntryQueueFull } from '../../../../src/chain/pallet/private-staking/storage/reads';
 
-/** A client whose staking reads answer `slashable`, with bonding 28 and fast unbond 2. */
-const client = (slashable: boolean) =>
+/**
+ * A client whose staking reads answer `slashable`, in era 5, with bonding 28 and the
+ * runtime's worked-out unbonding `fast` (`EraPruning.FastUnbond`).
+ */
+const client = (slashable: boolean, fast: [number, number, number] | null = [5, 28, 2]) =>
     ({
         unsafe: {
             query: {
-                Staking: { AreNominatorsSlashable: { getValue: vi.fn(async () => slashable) } },
-            },
-            constants: {
                 Staking: {
-                    BondingDuration: async () => 28,
-                    NominatorFastUnbondDuration: async () => 2,
+                    AreNominatorsSlashable: { getValue: vi.fn(async () => slashable) },
+                    ActiveEra: { getValue: vi.fn(async () => ({ index: 5 })) },
                 },
+                EraPruning: { FastUnbond: { getValue: vi.fn(async () => fast ?? undefined) } },
             },
+            constants: { Staking: { BondingDuration: async () => 28 } },
         },
     }) as unknown as SubstrateClient;
 
 describe('PrivateStakingModule.exitUnbondingEras', () => {
-    it('is the fast unbond while nominators are not slashable', async () => {
+    it('is the fast unbond once no slashable era is in reach', async () => {
         expect(await new PrivateStakingModule(client(false)).exitUnbondingEras()).toBe(2);
     });
 
-    it('is the full bonding duration once they are', async () => {
+    it('is the full bonding duration while one is', async () => {
+        expect(await new PrivateStakingModule(client(false, [5, 28, 28])).exitUnbondingEras()).toBe(
+            28
+        );
+    });
+
+    it('is the full bonding duration while nominators are slashable', async () => {
         expect(await new PrivateStakingModule(client(true)).exitUnbondingEras()).toBe(28);
+    });
+
+    it('is the full bonding duration when the working is stale', async () => {
+        expect(await new PrivateStakingModule(client(false, [4, 28, 2])).exitUnbondingEras()).toBe(
+            28
+        );
+        expect(await new PrivateStakingModule(client(false, null)).exitUnbondingEras()).toBe(28);
     });
 });
 

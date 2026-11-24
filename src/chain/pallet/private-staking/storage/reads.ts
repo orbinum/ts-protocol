@@ -7,6 +7,7 @@ import {
     readMinJoinBond,
     readPointsToBalance,
     readPool,
+    readPoolPendingRewards,
 } from '../../nomination-pools/storage/reads';
 import { readMinSpendFee } from '../../shielded-pool/storage/reads';
 import { readNominatorUnbondDuration } from '../../staking/storage/reads';
@@ -43,6 +44,8 @@ type PrivateReads = {
             Pools: StorageMap<[number], RawPool | undefined>;
             AssetPool: StorageMap<[number], number | undefined>;
             EntryPoints: StorageMap<[number], Num>;
+            Escrow: StorageMap<[number], Num>;
+            EntryEscrow: StorageMap<[number], Num>;
             Entries: {
                 getEntries(
                     poolId: number,
@@ -61,8 +64,12 @@ type PrivateReads = {
             ActiveEra: Value<{ index: number } | undefined>;
             MinNominatorBond: Value<Num>;
         };
+        System: {
+            Account: { getValue(who: string, at?: At): Promise<{ data: { free: Num } }> };
+        };
     };
     constants: {
+        Balances: { ExistentialDeposit(): Promise<Num> };
         PrivateStaking: {
             VirtualOffset(): Promise<Num>;
             MaxQueue(): Promise<number>;
@@ -135,24 +142,55 @@ export async function readPrivateQuote(
     poolId: number
 ): Promise<PrivatePoolQuote | null> {
     const api = reads(substrate);
+    const memberAddress = privateMemberAddress(poolId);
     const [pool, member, pending, offset] = await Promise.all([
         readPrivatePool(substrate, poolId),
-        api.query.NominationPools.PoolMembers.getValue(privateMemberAddress(poolId), BEST),
+        api.query.NominationPools.PoolMembers.getValue(memberAddress, BEST),
         api.query.PrivateStaking.EntryPoints.getValue(poolId, BEST),
         api.constants.PrivateStaking.VirtualOffset(),
     ]);
     if (!pool) return null;
     const points = member ? BigInt(member.points) : 0n;
     const minted = points > BigInt(pending) ? points - BigInt(pending) : 0n;
-    const netValue = minted > 0n ? await readPointsToBalance(substrate, poolId, minted) : 0n;
+    const [netValue, uncompounded] = await Promise.all([
+        minted > 0n ? readPointsToBalance(substrate, poolId, minted) : 0n,
+        pool.windDown
+            ? 0n
+            : readUncompounded(substrate, poolId, memberAddress, member !== undefined),
+    ]);
     return {
         poolId,
         assetId: pool.assetId,
         supply: pool.supply,
         netValue,
+        uncompounded,
         virtualOffset: BigInt(offset),
         windDown: pool.windDown,
     };
+}
+
+/**
+ * The private member's rewards not compounded yet (`uncompounded`): pending in the pool,
+ * plus its free balance above its existential deposit and what it holds for outputs
+ * (`Escrow`) and unsettled entries (`EntryEscrow`).
+ */
+async function readUncompounded(
+    substrate: SubstrateClient,
+    poolId: number,
+    memberAddress: string,
+    isMember: boolean
+): Promise<bigint> {
+    const { query, constants } = reads(substrate);
+    const [pending, account, ed, escrow, entryEscrow] = await Promise.all([
+        isMember ? readPoolPendingRewards(substrate, memberAddress) : 0n,
+        query.System.Account.getValue(memberAddress, BEST),
+        constants.Balances.ExistentialDeposit(),
+        query.PrivateStaking.Escrow.getValue(poolId, BEST),
+        query.PrivateStaking.EntryEscrow.getValue(poolId, BEST),
+    ]);
+    const held = BigInt(ed) + BigInt(escrow) + BigInt(entryEscrow);
+    const free = BigInt(account.data.free);
+    return pending + (free > held ? free - held : 0n);
 }
 
 /**

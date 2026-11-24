@@ -434,7 +434,7 @@ describe('StakingModule reads', () => {
     });
 
     it('reads the config with the active era’s start, or null without it', async () => {
-        const config = (era: unknown) => {
+        const config = (era: unknown, fastUnbond: unknown = [7, 28, 2]) => {
             const value = <T>(v: T) => ({ getValue: vi.fn().mockResolvedValue(v) });
             const client = {
                 unsafe: {
@@ -448,11 +448,11 @@ describe('StakingModule reads', () => {
                             MaxCommission: value(100_000_000),
                             AreNominatorsSlashable: value(false),
                         },
+                        EraPruning: { FastUnbond: value(fastUnbond ?? undefined) },
                     },
                     constants: {
                         Staking: {
                             BondingDuration: vi.fn().mockResolvedValue(28),
-                            NominatorFastUnbondDuration: vi.fn().mockResolvedValue(2),
                             HistoryDepth: vi.fn().mockResolvedValue(84),
                             SessionsPerEra: vi.fn().mockResolvedValue(6),
                         },
@@ -483,6 +483,15 @@ describe('StakingModule reads', () => {
             activeEra: null,
             activeEraStartMs: null,
             plannedEra: null,
+        });
+        // Worked out for another era, or not at all: the full bonding duration.
+        expect(await config({ index: 8 })).toMatchObject({ nominatorUnbondDuration: 28 });
+        expect(await config({ index: 7 }, null)).toMatchObject({
+            nominatorUnbondDuration: 28,
+        });
+        // Worked out with another bonding duration (an upgrade): the full one.
+        expect(await config({ index: 7 }, [7, 27, 2])).toMatchObject({
+            nominatorUnbondDuration: 28,
         });
     });
 

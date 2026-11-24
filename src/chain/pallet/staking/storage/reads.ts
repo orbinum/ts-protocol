@@ -64,7 +64,9 @@ type StakingReads = {
             Validators: {
                 getValue(stash: string, at?: At): Promise<{ commission: number; blocked: boolean }>;
             };
-            ActiveEra: { getValue(): Promise<{ index: number; start?: Num } | undefined> };
+            ActiveEra: {
+                getValue(at?: At): Promise<{ index: number; start?: Num } | undefined>;
+            };
             CurrentEra: { getValue(): Promise<number | undefined> };
             MinNominatorBond: { getValue(at?: At): Promise<Num> };
             MinValidatorBond: { getValue(at?: At): Promise<Num> };
@@ -106,6 +108,10 @@ type StakingReads = {
                 ): Promise<Enum<'Until', number> | Enum<'Permanent'> | undefined>;
             };
         };
+        EraPruning: {
+            /** The active era it was worked out for, the bonding duration used, the result. */
+            FastUnbond: { getValue(at?: At): Promise<[number, number, number] | undefined> };
+        };
         System: {
             Number: { getValue(at?: At): Promise<number> };
             Account: { getValue(who: string, at?: At): Promise<{ data: { free: Num } }> };
@@ -115,7 +121,6 @@ type StakingReads = {
         System: { Version(): Promise<{ spec_name: string }> };
         Staking: {
             BondingDuration(): Promise<number>;
-            NominatorFastUnbondDuration(): Promise<number>;
             HistoryDepth(): Promise<number>;
             SessionsPerEra(): Promise<number>;
         };
@@ -269,14 +274,32 @@ export function readMaxCommission(substrate: SubstrateClient): Promise<number> {
 }
 
 /**
- * Eras a nominator's or pool member's unbonded stake stays locked: the fast unbond while
- * nominators are not slashable, the full bonding duration otherwise.
+ * The unbonding the runtime works out each era (`EraPruning.FastUnbond`): short only once
+ * no era a slash can still reach had nominators slashable. A value worked out for another
+ * era or bonding duration reads as the full bonding duration.
+ */
+function fastUnbondOf(
+    cached: readonly [number, number, number] | undefined,
+    activeEra: number,
+    bonding: number
+): number {
+    return cached && cached[0] === activeEra && cached[1] === bonding ? cached[2] : bonding;
+}
+
+/**
+ * Eras a nominator's or pool member's unbonded stake stays locked: the full bonding
+ * duration while nominators are slashable, or while an era a slash can still reach had
+ * them slashable; the fast unbond otherwise.
  */
 export async function readNominatorUnbondDuration(substrate: SubstrateClient): Promise<number> {
     const { query, constants } = reads(substrate);
-    return (await query.Staking.AreNominatorsSlashable.getValue(BEST))
-        ? constants.Staking.BondingDuration()
-        : constants.Staking.NominatorFastUnbondDuration();
+    const [slashable, bonding, era, fast] = await Promise.all([
+        query.Staking.AreNominatorsSlashable.getValue(BEST),
+        constants.Staking.BondingDuration(),
+        query.Staking.ActiveEra.getValue(BEST),
+        query.EraPruning.FastUnbond.getValue(BEST),
+    ]);
+    return slashable ? bonding : fastUnbondOf(fast, era?.index ?? 0, bonding);
 }
 
 /** Era, minimum bonds, the commission floor and ceiling, and the era constants. */
@@ -303,7 +326,7 @@ export async function readStakingConfig(substrate: SubstrateClient): Promise<Sta
         readMaxCommission(substrate),
         constants.Staking.BondingDuration(),
         query.Staking.AreNominatorsSlashable.getValue(BEST),
-        constants.Staking.NominatorFastUnbondDuration(),
+        query.EraPruning.FastUnbond.getValue(BEST),
         constants.Staking.HistoryDepth(),
         constants.Staking.SessionsPerEra(),
     ]);
@@ -316,7 +339,9 @@ export async function readStakingConfig(substrate: SubstrateClient): Promise<Sta
         minCommission,
         maxCommission,
         bondingDuration: bonding,
-        nominatorUnbondDuration: nominatorsSlashable ? bonding : fastUnbond,
+        nominatorUnbondDuration: nominatorsSlashable
+            ? bonding
+            : fastUnbondOf(fastUnbond, era?.index ?? 0, bonding),
         nominatorsSlashable,
         historyDepth: history,
         sessionsPerEra: sessions,

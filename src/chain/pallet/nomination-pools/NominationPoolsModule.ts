@@ -460,6 +460,6 @@ export class NominationPoolsModule {
         options?: SubmitOptions
     ): Promise<TxResult> {
         const tx = callUnsafeTx(resolveTx(this.substrate.unsafe, 'NominationPools', call), args);
-        return signAndSubmitTx(tx, signer, options);
+        return this.substrate.trackTx(signAndSubmitTx(tx, signer, options));
     }
 }

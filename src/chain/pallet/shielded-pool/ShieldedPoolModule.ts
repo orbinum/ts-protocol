@@ -69,7 +69,7 @@ export class ShieldedPoolModule {
         const args = shieldCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'shield');
         const tx = callUnsafeTx(entry, args);
-        return signAndSubmitTx(tx, signer, options);
+        return this.substrate.trackTx(signAndSubmitTx(tx, signer, options));
     }
 
     /**
@@ -133,7 +133,7 @@ export class ShieldedPoolModule {
         const args = shieldBatchCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'shield_batch');
         const tx = callUnsafeTx(entry, args);
-        return signAndSubmitTx(tx, signer, options);
+        return this.substrate.trackTx(signAndSubmitTx(tx, signer, options));
     }
 
     /**
@@ -151,7 +151,7 @@ export class ShieldedPoolModule {
         const args = claimFeesCallArgs(params);
         const entry = resolveTx(this.substrate.unsafe, 'ShieldedPool', 'claim_fees');
         const tx = callUnsafeTx(entry, args);
-        return signAndSubmitTx(tx, signer, options);
+        return this.substrate.trackTx(signAndSubmitTx(tx, signer, options));
     }
 
     // ─── Storage & constants ───────────────────────────────────────────────────

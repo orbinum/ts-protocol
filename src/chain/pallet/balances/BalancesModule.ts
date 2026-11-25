@@ -69,6 +69,6 @@ export class BalancesModule {
             resolveTx(this.substrate.unsafe, 'Balances', 'transfer_keep_alive'),
             args
         );
-        return signAndSubmitTx(tx, signer, options);
+        return this.substrate.trackTx(signAndSubmitTx(tx, signer, options));
     }
 }

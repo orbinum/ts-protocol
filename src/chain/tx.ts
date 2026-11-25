@@ -255,13 +255,19 @@ export async function submitBareTx(
     client: SubstrateClient,
     onBroadcast?: () => void
 ): Promise<TxResult> {
-    const bareTx = await tx.getBareTx();
-    // The unsigned path has no event stream — `submit` resolves only at
-    // finalization. Firing before the await is the closest observable moment to
-    // "the tx left the wallet", and matches what a signed submit reports.
-    onBroadcast?.();
-    const payload = await client.submitUnsignedAndWatch(bareTx);
-    return toTxResult(payload);
+    // Tracked from `getBareTx` on: it reads the chain too, and a teardown there
+    // fails the spend as surely as one after the broadcast.
+    return client.trackTx(
+        (async () => {
+            const bareTx = await tx.getBareTx();
+            // The unsigned path has no event stream — `submit` resolves only at
+            // finalization. Firing before the await is the closest observable moment to
+            // "the tx left the wallet", and matches what a signed submit reports.
+            onBroadcast?.();
+            const payload = await client.submitUnsignedAndWatch(bareTx);
+            return toTxResult(payload);
+        })()
+    );
 }
 
 export function resolveTx(unsafe: unknown, pallet: string, call: string): unknown {

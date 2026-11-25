@@ -47,17 +47,23 @@ export class SubstrateClient {
     /**
      * `true` while any submitted transaction is still waiting for finalization.
      * Connection managers use this to defer destroying the client — killing the
-     * WS mid-submit rejects the pending tx with "Client destroyed" even though
-     * it may still land on-chain.
+     * WS mid-submit rejects the pending tx with "ChainHead disjointed" or "Client
+     * destroyed" even though it may still land on-chain.
      *
-     * Only covers promise-based submits (`submit`, `submitUnsignedAndWatch`,
-     * `signAndSubmit`, which wraps PAPI's `createAndSubmit`); observable-based `submitAndWatch` callers are not tracked.
+     * Covers this client's promise-based submits (`submit`, `submitUnsignedAndWatch`,
+     * `signAndSubmit`) and every pallet module's submit, which wraps itself in
+     * `trackTx`. A bare `submitAndWatch` observable is not tracked.
      */
     get hasInflightTx(): boolean {
         return this._inflightTxCount > 0;
     }
 
-    private async trackTx<T>(p: Promise<T>): Promise<T> {
+    /**
+     * Counts `p` as a transaction in flight until it settles. For submit paths
+     * outside this class (a pallet module's `signAndSubmitTx`, `submitBareTx`), so
+     * the connection is not torn down under them.
+     */
+    async trackTx<T>(p: Promise<T>): Promise<T> {
         this._inflightTxCount++;
         try {
             return await p;

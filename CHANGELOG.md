@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-11-25
+
+### Added
+
+- `ClientProviderConfig.unresponsiveAfterMs` (default 30 s): how long heartbeat probes must
+  keep failing, from the first failed one, before the provider tears the client down.
+  Tripled while a transaction is in flight.
+- `SubstrateClient.trackTx(promise)` is public: it counts a submit made outside the client
+  as in flight until it settles.
+
+### Changed
+
+- `OrbinumClientProvider` no longer tears the client down after two failed probes in a
+  row. A node that stalls for 10–15 s fails two probes 5 s apart, and the teardown
+  rejected every read and transaction in flight with `ChainHead disjointed` though the
+  socket was still open. The client now survives any stall shorter than
+  `unresponsiveAfterMs`, and a probe still pending when the next tick comes is not sent
+  again.
+- Every pallet module's submit (`balances`, `nominationPools`, `privateStaking`,
+  `shieldedPool`, signed or unsigned) now counts as a transaction in flight, from
+  building the tx to its result. Before, only `SubstrateClient`'s own submits did, so
+  the provider applied the longer tolerance to almost no transaction.
+
 ## [0.20.0] - 2026-11-23
 
 For runtime spec 25.

@@ -176,6 +176,6 @@ export class PrivateStakingModule {
         }
         const entry = resolveTx(this.substrate.unsafe, 'PrivateStaking', 'set_private');
         const tx = callUnsafeTx(entry, { pool_id: poolId, enabled });
-        return signAndSubmitTx(tx, signer, options);
+        return this.substrate.trackTx(signAndSubmitTx(tx, signer, options));
     }
 }

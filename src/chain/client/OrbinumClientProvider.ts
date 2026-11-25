@@ -63,8 +63,20 @@ export interface ClientProviderConfig {
     metadataCache?: MetadataCache;
     /** Interval between heartbeat probes in milliseconds. Default: `5_000`. */
     heartbeatIntervalMs?: number;
-    /** Maximum time to wait for a heartbeat response before treating the node as unreachable. Default: `4_000`. */
+    /** Maximum time to wait for one heartbeat response before counting that probe as failed. Default: `4_000`. */
     heartbeatTimeoutMs?: number;
+    /**
+     * How long probes must keep failing before the client is torn down, in
+     * milliseconds, counted from the first failed probe. Tripled while a
+     * transaction is in flight. Default: `30_000`.
+     *
+     * A slow node is not a dead one: tearing the client down rejects every read
+     * and transaction in flight with "ChainHead disjointed", though the socket was
+     * fine. A socket that really closes PAPI reopens on its own, and its own
+     * heartbeat (30 s) catches one that dies silently, so this only has to catch
+     * a node that stays unresponsive for longer than that.
+     */
+    unresponsiveAfterMs?: number;
     /** Initial reconnect delay in milliseconds (doubles on each failure). Default: `3_000`. */
     reconnectBaseMs?: number;
     /** Maximum reconnect delay cap in milliseconds. Default: `30_000`. */
@@ -83,6 +95,7 @@ export interface ClientProviderConfig {
 const DEFAULT_CONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000;
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 4_000;
+const DEFAULT_UNRESPONSIVE_AFTER_MS = 30_000;
 const DEFAULT_RECONNECT_BASE_MS = 3_000;
 const DEFAULT_RECONNECT_MAX_MS = 30_000;
 const DEFAULT_STABLE_AFTER_MS = 10_000;
@@ -122,6 +135,7 @@ export class OrbinumClientProvider {
     private readonly connectTimeoutMs: number;
     private readonly heartbeatIntervalMs: number;
     private readonly heartbeatTimeoutMs: number;
+    private readonly unresponsiveAfterMs: number;
     private readonly reconnectBaseMs: number;
     private readonly reconnectMaxMs: number;
     private readonly stableAfterMs: number;
@@ -146,8 +160,6 @@ export class OrbinumClientProvider {
     private _stableTimer: ReturnType<typeof setTimeout> | null = null;
     /** Backoff exponent. Reset only once a connection proves stable. */
     private _reconnectAttempt = 0;
-    /** Consecutive failed probes, against the thresholds below. */
-    private _probeFailures = 0;
 
     // ─── Events ─────────────────────────────────────────────────────────────
     private _listeners: Set<StatusListener> = new Set();
@@ -158,6 +170,7 @@ export class OrbinumClientProvider {
         this.connectTimeoutMs = config.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
         this.heartbeatIntervalMs = config.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
         this.heartbeatTimeoutMs = config.heartbeatTimeoutMs ?? DEFAULT_HEARTBEAT_TIMEOUT_MS;
+        this.unresponsiveAfterMs = config.unresponsiveAfterMs ?? DEFAULT_UNRESPONSIVE_AFTER_MS;
         this.reconnectBaseMs = config.reconnectBaseMs ?? DEFAULT_RECONNECT_BASE_MS;
         this.reconnectMaxMs = config.reconnectMaxMs ?? DEFAULT_RECONNECT_MAX_MS;
         this.stableAfterMs = config.stableAfterMs ?? DEFAULT_STABLE_AFTER_MS;
@@ -332,40 +345,46 @@ export class OrbinumClientProvider {
     // ─── Heartbeat ──────────────────────────────────────────────────────────
 
     /**
-     * Consecutive failed probes required before the client is torn down. A
-     * single missed probe is routine (throttled background tab, node busy
-     * verifying a ZK proof, transient network blip) — destroying the client on
-     * it rejects every in-flight request with "Client destroyed" even though
-     * the tx may still land on-chain.
+     * With a tx in flight, the node may stay unresponsive this many times longer
+     * before the client is torn down: an unsigned private_transfer/unshield makes
+     * the node CPU-bound on proof verification, which is exactly when probes time
+     * out — tearing down then kills the very tx being processed.
      */
-    private static readonly PROBE_FAILURE_THRESHOLD = 2;
-    /**
-     * With a tx awaiting finalization, tolerate more missed probes: an unsigned
-     * private_transfer/unshield makes the node CPU-bound on proof verification,
-     * which is exactly when probes time out — tearing down then kills the very
-     * tx being processed.
-     */
-    private static readonly PROBE_FAILURE_THRESHOLD_INFLIGHT = 6;
+    private static readonly INFLIGHT_TOLERANCE_FACTOR = 3;
 
-    /** Replaces any running heartbeat, so a reconnect never leaves two probing. */
+    /**
+     * Probes the node every `heartbeatIntervalMs` and tears the client down once
+     * probes have failed for `unresponsiveAfterMs` straight. Measured in time, not
+     * in failed probes: a node that stalls for 15 s answers again on its own, and
+     * two probes 5 s apart can both fall inside such a stall.
+     *
+     * A probe still pending when the next tick comes is not doubled: a stalled
+     * node would only get more requests queued behind the one it is not answering.
+     * Replaces any running heartbeat, so a reconnect never leaves two probing.
+     */
     private startHeartbeat(): void {
         this.stopHeartbeat();
-        this._probeFailures = 0;
+        let probing = false;
+        /** Send time of the first failed probe in the current streak. */
+        let failingSince: number | null = null;
         this._heartbeatTimer = setInterval(async () => {
             const client = this._orbinumClient;
-            if (this._status !== 'connected' || !client) return;
+            if (this._status !== 'connected' || !client || probing) return;
+            probing = true;
+            const sentAt = Date.now();
             const alive = await this.probe();
+            probing = false;
             // A probe of a client torn down meanwhile says nothing of the current one.
             if (this._status !== 'connected' || this._orbinumClient !== client) return;
             if (alive) {
-                this._probeFailures = 0;
+                failingSince = null;
                 return;
             }
-            this._probeFailures++;
-            const threshold = this._orbinumClient?.substrate.hasInflightTx
-                ? OrbinumClientProvider.PROBE_FAILURE_THRESHOLD_INFLIGHT
-                : OrbinumClientProvider.PROBE_FAILURE_THRESHOLD;
-            if (this._probeFailures >= threshold) {
+            failingSince ??= sentAt;
+            const limit = client.substrate.hasInflightTx
+                ? this.unresponsiveAfterMs * OrbinumClientProvider.INFLIGHT_TOLERANCE_FACTOR
+                : this.unresponsiveAfterMs;
+            if (Date.now() - failingSince >= limit) {
                 this.setStatus('disconnected', 'Node is unreachable');
                 this.teardownClient();
                 this.scheduleReconnect();

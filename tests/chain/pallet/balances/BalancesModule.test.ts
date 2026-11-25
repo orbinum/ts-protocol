@@ -13,6 +13,7 @@ function client(account: unknown) {
         }),
     }));
     const substrate = {
+        trackTx: <T>(p: Promise<T>) => p,
         unsafe: {
             query: { System: { Account: { getValue: vi.fn(async () => account) } } },
             tx: { Balances: { transfer_keep_alive: transfer } },

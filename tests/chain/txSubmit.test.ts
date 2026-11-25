@@ -239,6 +239,7 @@ describe('submitBareTx', () => {
         // closest observable moment to the tx leaving the wallet.
         const seen: string[] = [];
         const client = {
+            trackTx: <T>(p: Promise<T>) => p,
             submitUnsignedAndWatch: async () => {
                 seen.push('submitted');
                 return FINALIZED;

@@ -33,6 +33,7 @@ function txClient(
     const txEntry = vi.fn().mockReturnValue({ createAndSubmit });
     return {
         request: vi.fn(),
+        trackTx: <T>(p: Promise<T>) => p,
         unsafe: { tx: { ShieldedPool: { [call]: txEntry } } },
         _txEntry: txEntry,
         _signAndSubmit: createAndSubmit,
@@ -57,6 +58,7 @@ function bareTxClient(call: string): SubstrateClient & {
     const txEntry = vi.fn().mockReturnValue({ getBareTx });
     return {
         request: vi.fn(),
+        trackTx: <T>(p: Promise<T>) => p,
         unsafe: { tx: { ShieldedPool: { [call]: txEntry } } },
         submitUnsignedAndWatch,
         _txEntry: txEntry,
@@ -161,6 +163,7 @@ describe('ShieldedPoolModule.shield', () => {
     it('throws when call is missing from pallet', async () => {
         const client = {
             request: vi.fn(),
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: { tx: { ShieldedPool: {} } },
         } as unknown as SubstrateClient;
         const mod = new ShieldedPoolModule(client);
@@ -323,6 +326,7 @@ describe('ShieldedPoolModule.privateTransfer', () => {
     it('throws when call is missing', async () => {
         const client = {
             request: vi.fn(),
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: { tx: { ShieldedPool: {} } },
         } as unknown as SubstrateClient;
         const mod = new ShieldedPoolModule(client);
@@ -443,6 +447,7 @@ describe('ShieldedPoolModule.shieldBatch', () => {
     it('throws when call is missing', async () => {
         const client = {
             request: vi.fn(),
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: { tx: { ShieldedPool: {} } },
         } as unknown as SubstrateClient;
         const mod = new ShieldedPoolModule(client);
@@ -588,6 +593,7 @@ function readsClient(pending: unknown, minSpendFee: unknown = 1_000_000_000_000_
     const MinSpendFee = vi.fn().mockResolvedValue(minSpendFee);
     const client = {
         request: vi.fn(),
+        trackTx: <T>(p: Promise<T>) => p,
         unsafe: {
             query: { ShieldedPool: { PendingFees: { getValue } } },
             constants: { ShieldedPool: { MinSpendFee } },
@@ -647,6 +653,7 @@ function rootsClient(s: { active?: string; expiresAt?: number; sealed?: number; 
     const historic = vi.fn().mockResolvedValue(s.expiresAt);
     const client = {
         request: vi.fn(),
+        trackTx: <T>(p: Promise<T>) => p,
         unsafe: {
             query: {
                 ShieldedPool: {

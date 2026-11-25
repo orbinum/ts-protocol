@@ -31,6 +31,7 @@ function txClient(candidates: string[] = [ALICE, BOB], reads: Record<string, unk
         request: vi.fn(async (_method: string, [key]: [string]) =>
             candidates.includes(key) ? '0x00' : null
         ),
+        trackTx: <T>(p: Promise<T>) => p,
         unsafe: {
             ...reads,
             query: {
@@ -260,6 +261,7 @@ const POOL_SUMMARY = {
 describe('NominationPoolsModule reads', () => {
     it('reads the config, with unset limits as null', async () => {
         const client = {
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     NominationPools: {
@@ -297,6 +299,7 @@ describe('NominationPoolsModule reads', () => {
             pool_balance: vi.fn().mockResolvedValue(149n * ORB),
         };
         const client = {
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     NominationPools: {
@@ -359,6 +362,7 @@ describe('NominationPoolsModule reads', () => {
 
     it('lists pools by id, each with its name', async () => {
         const client = {
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     NominationPools: {
@@ -394,6 +398,7 @@ describe('NominationPoolsModule reads', () => {
             points_to_balance: vi.fn().mockResolvedValue(9n * ORB),
         };
         const client = {
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     NominationPools: {
@@ -462,6 +467,7 @@ describe('NominationPoolsModule reads', () => {
             payout: 0n,
         });
         const client = {
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     Staking: {

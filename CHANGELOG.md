@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-11-25
+
+### Fixed
+
+- `isConnectionLossError` (and so `txLandedAfterError`) now reads polkadot-api's
+  `ChainHead disjointed` and `ChainHead stopped` as a lost connection, not a rejection.
+  They are how a submit most often loses its watch, and a host that recovers a submit by
+  polling whether it landed gave up on them at once and reported a failure, though the
+  transaction may have landed.
+- `client.staking`'s submits count as a transaction in flight too, as every other pallet
+  module's do since 0.20.1, so the provider gives them the longer tolerance.
+
 ## [0.20.1] - 2026-11-25
 
 ### Added

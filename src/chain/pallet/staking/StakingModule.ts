@@ -154,7 +154,7 @@ export class StakingModule {
             this.lockable(value, tx, signer).then((locked) =>
                 this.refuseBelowBondFloor(locked, 0n, 'bond.value (after the fee)')
             ),
-        ]).then(() => signAndSubmitTx(tx, signer, options));
+        ]).then(() => this.substrate.trackTx(signAndSubmitTx(tx, signer, options)));
     }
 
     /**
@@ -170,7 +170,7 @@ export class StakingModule {
                 const locked = await this.lockable(value, tx, signer);
                 await this.refuseBelowBondFloor(locked, active, 'bond_extra.max_additional');
             })
-            .then(() => signAndSubmitTx(tx, signer, options));
+            .then(() => this.substrate.trackTx(signAndSubmitTx(tx, signer, options)));
     }
 
     /**
@@ -438,6 +438,8 @@ export class StakingModule {
         signer: SubstrateSigner,
         options?: SubmitOptions
     ): Promise<TxResult> {
-        return signAndSubmitTx(this.tx(pallet, call, args), signer, options);
+        return this.substrate.trackTx(
+            signAndSubmitTx(this.tx(pallet, call, args), signer, options)
+        );
     }
 }

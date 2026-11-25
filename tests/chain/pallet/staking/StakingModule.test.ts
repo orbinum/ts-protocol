@@ -50,6 +50,7 @@ function txClient(
         request: vi.fn(async (_method: string, [key]: [string]) =>
             candidates.includes(key) ? '0x00' : null
         ),
+        trackTx: <T>(p: Promise<T>) => p,
         unsafe: {
             query: {
                 Staking: {
@@ -361,6 +362,7 @@ describe('StakingModule reads', () => {
                 buildStorage: () => ({ keys: { enc: key } }),
             }),
             request: vi.fn().mockResolvedValue('0x00'),
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     Staking: {
@@ -408,6 +410,7 @@ describe('StakingModule reads', () => {
                 .fn()
                 .mockResolvedValue({ buildStorage: () => ({ keys: { enc: () => 'k' } }) }),
             request: vi.fn().mockResolvedValue(null),
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     Staking: {
@@ -437,6 +440,7 @@ describe('StakingModule reads', () => {
         const config = (era: unknown, fastUnbond: unknown = [7, 28, 2]) => {
             const value = <T>(v: T) => ({ getValue: vi.fn().mockResolvedValue(v) });
             const client = {
+                trackTx: <T>(p: Promise<T>) => p,
                 unsafe: {
                     query: {
                         Staking: {
@@ -510,6 +514,7 @@ describe('StakingModule reads', () => {
 
     it('reads a ban and the allowlist', async () => {
         const client = {
+            trackTx: <T>(p: Promise<T>) => p,
             unsafe: {
                 query: {
                     ValidatorSet: {

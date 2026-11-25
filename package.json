@@ -1,6 +1,6 @@
 {
     "name": "@orbinum/protocol",
-    "version": "0.20.1",
+    "version": "0.20.2",
     "description": "Official TypeScript SDK for Orbinum \u2014 chain access, encoding, note types and payment slips. Custody-free.",
     "author": "Orbinum Technologies",
     "license": "MIT",

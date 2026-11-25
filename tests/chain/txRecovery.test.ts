@@ -18,6 +18,8 @@ describe('isConnectionLossError', () => {
         'node unreachable',
         'request timeout',
         'peer disconnected',
+        'ChainHead disjointed',
+        'ChainHead stopped',
     ])('treats "%s" as unknown-outcome', (msg) => {
         expect(isConnectionLossError(new Error(msg))).toBe(true);
     });

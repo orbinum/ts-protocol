@@ -20,8 +20,14 @@ import type { TxResult } from './client/types';
 /**
  * Errors where the submit outcome is UNKNOWN — the connection died mid-flight
  * and the tx may still finalize. Anything else is a real rejection.
+ *
+ * `ChainHead disjointed` and `ChainHead stopped` are polkadot-api's: the block
+ * subscription a submit is watched through died (a socket that reopened, a client
+ * torn down, a node that ended the subscription) — the commonest way to lose a
+ * submit, and the one the node's stalls produce.
  */
-const CONNECTION_LOSS_RE = /destroyed|disconnect|unreachable|websocket|closed|timeout/i;
+const CONNECTION_LOSS_RE =
+    /destroyed|disconnect|disjoint|chainhead stopped|unreachable|websocket|closed|timeout/i;
 
 /** Whether an error leaves the submit outcome unknown rather than rejected. */
 export function isConnectionLossError(err: unknown): boolean {

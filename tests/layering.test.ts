@@ -1,13 +1,16 @@
 /**
- * Layers point one way: `foundation → protocol → chain`. A lower layer importing a
- * higher one fails here, by the path its import resolves to.
+ * Layers point one way: `foundation → protocol → chain → provider`. A lower layer
+ * importing a higher one fails here, by the path its import resolves to.
+ *
+ * `provider` is the dapp-facing entry and sits on top: it may read the layers below
+ * (the private-call limits), and nothing below may depend on it.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(__dirname, '../src');
-const RANK: Record<string, number> = { foundation: 0, protocol: 1, chain: 2 };
+const RANK: Record<string, number> = { foundation: 0, protocol: 1, chain: 2, provider: 3 };
 
 function files(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {
@@ -16,7 +19,8 @@ function files(dir: string): string[] {
     });
 }
 
-const layerOf = (path: string) => relative(SRC, path).split('/')[0]!;
+// Either separator: `relative` answers with backslashes on Windows.
+const layerOf = (path: string) => relative(SRC, path).split(/[\\/]/)[0]!;
 
 function upwardImports(): string[] {
     const found: string[] = [];

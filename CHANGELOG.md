@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`@orbinum/protocol/provider`**, a new entry for connecting a dapp to Orbinum
+  Wallet. It loads no peer at runtime.
+  - `window.orbinum`: `OrbinumProvider` and its typed `request`
+    (`OrbinumRequest<M>`), `OrbinumMethods`, `ORBINUM_METHODS`, `isOrbinumMethod`
+    and `OrbinumEventMap`. The methods are `orbinum_requestAccounts`,
+    `orbinum_accounts`, `orbinum_chain`, `orbinum_permissions`,
+    `orbinum_requestPermissions`, `orbinum_transfer`, `orbinum_privateTransfer`,
+    `orbinum_privateCall` and `orbinum_signMessage`. Their params and results:
+    `OrbinumAccount`, `OrbinumChainInfo`, `OrbinumPermissions`,
+    `OrbinumTransferParams`/`Receipt`, `OrbinumPrivateTransferParams`/`Receipt`,
+    `OrbinumPrivateCallParams`/`Step`/`Receipt`, `OrbinumSignMessageParams` and
+    `OrbinumSignature` (its `scheme`, `eip191` or `sr25519`, is the signing account's key's).
+    Amounts are planck as decimal strings (`PlanckString`).
+  - EIP-1193: `Eip1193Provider`, `RequestArguments`, `Eip1193EventMap`,
+    `EthTransactionRequest`, and the methods the wallet answers
+    (`ORBINUM_EIP1193_METHODS`, `isOrbinumEip1193Method`, `isEip1193ReadMethod`).
+  - EIP-6963: `Eip6963ProviderInfo`, `Eip6963ProviderDetail`,
+    `requestEip6963Providers({ timeoutMs })`, `announceEip6963Provider(detail)`,
+    `isEip6963ProviderDetail` and `ORBINUM_WALLET_RDNS` (`network.orbinum.wallet`).
+  - Discovery: `getOrbinumProvider()`, `waitForOrbinumProvider({ timeoutMs })`,
+    `getOrbinumEip1193Provider({ timeoutMs })` and `ORBINUM_INITIALIZED_EVENT`. They
+    answer null off-page; they never throw.
+  - Errors: `PROVIDER_ERROR_CODES` (4001, 4100, 4200, 4900, 4901, 4902, -32602,
+    -32603), `ProviderRpcError` (with `toShape()`) and `providerRpcErrorOf(error)`,
+    which reads the class or the plain `{ code, message }` that crossed the page.
+  - Guards, one per method. They check shape and size, never meaning:
+    `isOrbinumTransferParams`, `isOrbinumPrivateTransferParams`,
+    `isOrbinumPrivateCallParams` (within `PRIVATE_CALL_MAX_*`),
+    `isOrbinumSignMessageParams`, `isOrbinumRequestPermissionsParams`,
+    `isEthSendTransactionParams`, `isPersonalSignParams`, `isSignTypedDataV4Params`
+    and `isSwitchChainParams`. Their building blocks (`isPlanckString`,
+    `isHexData`, `isHexQuantity`, `isEvmAddressShape`, `isSs58Shape`,
+    `isPrivacyAddressShape`) and their bounds are exported too.
+- **EVM signing without a key** (root entry), for a wallet's EVM account:
+  - `eip1559SigningHash(tx)` and `serializeSignedEip1559(tx, { r, s, yParity })`
+    for type-2 transactions, with `Eip1559Transaction`, `rlpEncode` and
+    `quantityBytes`. The result is what `EvmClient.sendRawTransaction` takes.
+    Checked against the dev chain.
+  - `personalMessageHash(message)` (EIP-191) and `typedDataHash(typedData)`
+    (EIP-712 v4), with `encodeTypedDataType`, `typedDataTypeHash` and
+    `typedDataStructHash`. Checked against the EIP's `Mail` example.
+
+### Fixed
+
+- The layering test now reads Windows paths. It split them on `/` only, so on
+  Windows it found no layer and passed without checking anything.
+
 ## [0.20.2] - 2026-11-25
 
 ### Fixed

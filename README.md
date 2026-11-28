@@ -151,6 +151,113 @@ isValidLeafIndex(leafIndex); // a leaf index from an untrusted source is real?
 treeIdOf({ leafIndex }); // which forest tree that leaf lives in
 ```
 
+## Connect a dapp to Orbinum Wallet
+
+`@orbinum/protocol/provider` is what a dapp needs to talk to the wallet, and
+nothing else: it loads no peer, so a dapp that only talks to the wallet does not
+need `polkadot-api`.
+
+The wallet gives every account two public faces with **separate balances**:
+
+- the **substrate** account (SS58), which pays public ORB transfers;
+- the **EVM** account (`0x…`), which calls contracts. The chain lets only an EVM
+  key call contracts.
+
+Every payment and every signature is approved by the user in the wallet.
+
+### `window.orbinum`
+
+For what EIP-1193 has no words for: public ORB transfers, private payments,
+private calls.
+
+```ts
+import { waitForOrbinumProvider, providerRpcErrorOf } from '@orbinum/protocol/provider';
+
+const orbinum = await waitForOrbinumProvider(); // null: the wallet is not installed
+if (!orbinum) return showInstallLink();
+
+const [account] = await orbinum.request({ method: 'orbinum_requestAccounts' });
+// account.substrate: '5…', account.evm: '0x…'
+
+// A public payment, from the substrate account. Amounts are planck, as strings.
+const paid = await orbinum.request({
+    method: 'orbinum_transfer',
+    params: { to: merchantSs58, value: String(15n * 10n ** 17n) }, // 1.5 ORB
+});
+
+// A private payment: nothing on chain ties it to the payer. The proof goes to your
+// backend, which checks it with verifyPaymentProof (see above).
+const { paymentProof } = await orbinum.request({
+    method: 'orbinum_privateTransfer',
+    params: { to: 'orbpriv3:…', value: String(10n ** 18n) },
+});
+
+// Contract calls paid from the shielded balance, through the shared executor.
+// What comes back returns to the wallet as a private note.
+const receipt = await orbinum.request({
+    method: 'orbinum_privateCall',
+    params: { steps: [{ target, input: calldata, value: '0' }], amount, minReturn },
+});
+```
+
+| Method | What it does | Asks the user |
+| --- | --- | --- |
+| `orbinum_requestAccounts` | connects publicly; resolves to the accounts | once per site |
+| `orbinum_requestPrivateConnection` | connects privately: the site sees no account (`permissions.connection === 'private'`) | once per site |
+| `orbinum_privacyAddress` | the `orbpriv3:` address, once the site has the `privacy` permission; else `null` | no |
+| `orbinum_accounts`, `orbinum_chain`, `orbinum_permissions` | reads what this site may see | no |
+| `orbinum_requestPermissions` | `{ privacy: true }`: shares the `orbpriv3:` address (in the accounts, and `orbinum_privacyAddress`) | once per site |
+| `orbinum_transfer` | public ORB transfer from the substrate account | every time |
+| `orbinum_privateTransfer` | private payment to an `orbpriv3:` address; resolves with an `orbproof1:` proof. Any site may ask, connected or not; the user chooses what the recipient learns of the sender | every time |
+| `orbinum_privateCall` | EVM calls paid privately (1–8 steps). The fee is paid even if a step fails, so the wallet simulates first | every time |
+| `orbinum_signMessage` | the account signs `<Bytes>message</Bytes>` with its own key — EIP-191 for an Orbinum Wallet account (`scheme: 'eip191'`) | every time |
+
+Events: `accountsChanged`, `chainChanged`, `permissionsChanged`, `connect`,
+`disconnect`.
+
+### viem, ethers, any EIP-1193 library
+
+The wallet's EVM provider is announced through EIP-6963 as
+`network.orbinum.wallet`. Find it by that, not through `window.ethereum`, which
+another wallet may hold:
+
+```ts
+import { createWalletClient, custom } from 'viem';
+import { getOrbinumEip1193Provider } from '@orbinum/protocol/provider';
+
+const provider = await getOrbinumEip1193Provider();
+const client = createWalletClient({ transport: custom(provider!) });
+const [address] = await client.requestAddresses();
+await client.writeContract({ address: token, abi, functionName: 'transfer', args, account: address });
+```
+
+It answers the account, chain, `eth_sendTransaction`, `personal_sign`,
+`eth_signTypedData_v4` and `wallet_switchEthereumChain` methods itself, and
+forwards a fixed list of public reads (`ORBINUM_EIP1193_METHODS.reads`) to its
+node. Any other method is refused with 4200.
+
+### Errors
+
+Both providers reject with the same codes. `providerRpcErrorOf(error)` reads
+them, whether the error is a class or the plain `{ code, message }` that crossed
+the page.
+
+| Code | `PROVIDER_ERROR_CODES` | Meaning |
+| --- | --- | --- |
+| 4001 | `userRejected` | the user declined |
+| 4100 | `unauthorized` | the site is not connected, or lacks the permission |
+| 4200 | `unsupportedMethod` | the wallet does not answer that method |
+| 4900 / 4901 | `disconnected` / `chainDisconnected` | the wallet cannot reach the chain |
+| 4902 | `unrecognizedChain` | `wallet_switchEthereumChain` to a chain it does not offer |
+| -32602 | `invalidParams` | malformed params (the guards, e.g. `isOrbinumTransferParams`, check them before sending) |
+
+### EVM signing, for wallets
+
+`eip1559SigningHash`, `serializeSignedEip1559`, `personalMessageHash` and
+`typedDataHash` (in the root entry) build what an EVM account signs, without a
+key. A wallet signs the 32-byte hash with its own secp256k1 key and submits the
+result with `EvmClient.sendRawTransaction`.
+
 ## The custody boundary
 
 This SDK is deliberately incomplete: it cannot build or spend a note, because
@@ -166,14 +273,17 @@ this SDK, and belongs on the wallet's side of that line.
 
 ## Entry points
 
-| Import              | What it is                                   |
-| ------------------- | -------------------------------------------- |
-| `@orbinum/protocol` | Everything above — the single public surface |
+| Import                       | What it is                                                  |
+| ---------------------------- | ----------------------------------------------------------- |
+| `@orbinum/protocol`          | Chain access, encoding, notes, payment slips and proofs     |
+| `@orbinum/protocol/browser`  | Connecting a Substrate browser extension (`injectedWeb3`)   |
+| `@orbinum/protocol/provider` | Connecting a dapp to Orbinum Wallet — no peer at runtime    |
 
 ## Requirements
 
 - Node 22+, or any modern browser / RN runtime.
-- The peers `polkadot-api` and `@polkadot/util-crypto`, always (see Installation).
+- The peers `polkadot-api` and `@polkadot/util-crypto` for the root and
+  `/browser` entries (see Installation). `/provider` needs neither.
 
 ## License
 

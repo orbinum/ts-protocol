@@ -27,6 +27,11 @@
             "import": "./dist/internal.mjs",
             "require": "./dist/internal.js"
         },
+        "./provider": {
+            "types": "./dist/provider.d.ts",
+            "import": "./dist/provider.mjs",
+            "require": "./dist/provider.js"
+        },
         "./package.json": "./package.json"
     },
     "scripts": {

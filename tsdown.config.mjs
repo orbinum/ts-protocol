@@ -19,7 +19,14 @@ import { defineConfig } from 'tsdown';
  * the build depend on `unrun` to transpile itself.
  */
 export default defineConfig({
-    entry: ['src/index.ts', 'src/browser.ts', 'src/internal.ts'],
+    // Named so `provider` lands at `dist/provider.*` beside the others, though its
+    // source is a folder barrel: it is the dapp-facing entry, kept free of peers.
+    entry: {
+        index: 'src/index.ts',
+        browser: 'src/browser.ts',
+        internal: 'src/internal.ts',
+        provider: 'src/provider/index.ts',
+    },
     format: ['esm', 'cjs'],
     dts: { sourcemap: false },
     fixedExtension: false,

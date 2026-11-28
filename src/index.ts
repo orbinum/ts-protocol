@@ -121,3 +121,24 @@ export {
     decodeTokenTransfers,
 } from './chain/evm/erc';
 export type { EvmLogLike, DecodedTokenTransfer } from './chain/evm/erc';
+// What an EVM account signs, built without a key: the wallet signs the hash.
+export {
+    rlpEncode,
+    quantityBytes,
+    EIP1559_TRANSACTION_TYPE,
+    eip1559SigningHash,
+    serializeSignedEip1559,
+    personalMessageHash,
+    encodeTypedDataType,
+    typedDataTypeHash,
+    typedDataStructHash,
+    typedDataHash,
+} from './chain/evm/index';
+export type {
+    RlpInput,
+    AccessListEntry,
+    Eip1559Signature,
+    Eip1559Transaction,
+    TypedData,
+    TypedDataField,
+} from './chain/evm/index';
